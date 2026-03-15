@@ -1,6 +1,8 @@
 mod cli;
 mod config;
+mod diagnostics;
 mod discovery;
+mod scanner;
 
 use clap::Parser;
 use cli::Cli;
@@ -83,18 +85,59 @@ fn main() {
         if let Some(ref rv) = project_info.rust_version {
             eprintln!("MSRV: {rv}");
         }
-        if !resolved.ignore_rules.is_empty() {
-            eprintln!("Ignoring rules: {}", resolved.ignore_rules.join(", "));
-        }
-        if !resolved.ignore_files.is_empty() {
-            eprintln!("Ignoring files: {}", resolved.ignore_files.join(", "));
-        }
-        eprintln!("Fail on: {}", resolved.fail_on);
     }
 
-    // Placeholder: future stories will add scan orchestration here
-    println!(
-        "rust-doctor: scanning '{}'...",
-        project_info.root_dir.display()
+    // Count source files
+    let source_file_count = scanner::count_source_files(&project_info.root_dir);
+
+    // Build analysis passes
+    let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
+        Box::new(scanner::ClippyPass),
+        Box::new(scanner::CustomRulesPass),
+        Box::new(scanner::DependencyPass),
+    ];
+
+    // Run scan orchestrator
+    let suppress_spinner = cli.score || cli.json;
+    let orchestrator = scanner::ScanOrchestrator::new(passes);
+    let scan_result = orchestrator.run(
+        &project_info.root_dir,
+        &resolved,
+        source_file_count,
+        suppress_spinner,
     );
+
+    // Output results based on mode
+    if cli.score {
+        // Bare score output — placeholder until US-005
+        println!("100");
+    } else if cli.json {
+        match serde_json::to_string_pretty(&scan_result) {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("Error: failed to serialize scan results: {e}");
+                process::exit(1);
+            }
+        }
+    } else {
+        // Normal terminal output — placeholder until US-005
+        println!(
+            "rust-doctor: scanned {} files in {:.1}s — {} error(s), {} warning(s)",
+            scan_result.source_file_count,
+            scan_result.elapsed.as_secs_f64(),
+            scan_result.error_count,
+            scan_result.warning_count,
+        );
+    }
+
+    // Exit code based on fail_on config
+    let fail_on = resolved.fail_on;
+    let should_fail = match fail_on {
+        cli::FailOn::Error => scan_result.error_count > 0,
+        cli::FailOn::Warning => scan_result.error_count > 0 || scan_result.warning_count > 0,
+        cli::FailOn::None => false,
+    };
+    if should_fail {
+        process::exit(1);
+    }
 }

@@ -1,0 +1,470 @@
+use crate::config::ResolvedConfig;
+use crate::diagnostics::{Diagnostic, ScanResult, Severity};
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashSet;
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+/// Trait for pluggable analysis passes.
+///
+/// Each pass is run in parallel and returns a list of diagnostics.
+/// Passes must be `Send + Sync` for parallel execution.
+pub trait AnalysisPass: Send + Sync {
+    /// Human-readable name of this pass (e.g. "clippy", "custom rules", "dependencies").
+    fn name(&self) -> &str;
+
+    /// Run the analysis and return diagnostics.
+    /// The `project_root` is the absolute path to the project being scanned.
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String>;
+}
+
+/// Result from a single analysis pass (internal).
+struct PassResult {
+    name: String,
+    result: Result<Vec<Diagnostic>, String>,
+}
+
+/// Orchestrates multiple analysis passes in parallel and merges results.
+pub struct ScanOrchestrator {
+    passes: Vec<Box<dyn AnalysisPass>>,
+}
+
+impl ScanOrchestrator {
+    pub fn new(passes: Vec<Box<dyn AnalysisPass>>) -> Self {
+        Self { passes }
+    }
+
+    /// Run all analysis passes in parallel and return merged, filtered results.
+    ///
+    /// `suppress_spinner` should be true for `--score` or `--json` modes.
+    pub fn run(
+        &self,
+        project_root: &Path,
+        config: &ResolvedConfig,
+        source_file_count: usize,
+        suppress_spinner: bool,
+    ) -> ScanResult {
+        let start = Instant::now();
+
+        // Create spinner
+        let spinner = if suppress_spinner {
+            ProgressBar::hidden()
+        } else {
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::default_spinner()
+                    .template("{spinner:.cyan} {msg} [{elapsed}]")
+                    .unwrap()
+                    .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"]),
+            );
+            pb.set_message("Scanning...");
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb
+        };
+
+        // Run passes in parallel using std::thread::scope
+        let results = self.run_passes_parallel(project_root);
+
+        spinner.finish_and_clear();
+
+        // Collect diagnostics and track failures
+        let mut all_diagnostics = Vec::new();
+        let mut skipped_passes = Vec::new();
+        let mut pass_errors = Vec::new();
+
+        for result in results {
+            match result.result {
+                Ok(diagnostics) => all_diagnostics.extend(diagnostics),
+                Err(e) => {
+                    skipped_passes.push(result.name.clone());
+                    pass_errors.push(format!("{}: {}", result.name, e));
+                }
+            }
+        }
+
+        // If all passes failed, report it
+        if skipped_passes.len() == self.passes.len() && !self.passes.is_empty() {
+            eprintln!("No analysis could be completed:");
+            for err in &pass_errors {
+                eprintln!("  - {err}");
+            }
+        } else if !pass_errors.is_empty() {
+            for err in &pass_errors {
+                eprintln!("Warning: {err}");
+            }
+        }
+
+        // Filter diagnostics by config
+        let filtered = filter_diagnostics(all_diagnostics, config);
+
+        // Count errors and warnings
+        let error_count = filtered
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count();
+        let warning_count = filtered
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count();
+
+        ScanResult {
+            diagnostics: filtered,
+            source_file_count,
+            elapsed: start.elapsed(),
+            skipped_passes,
+            error_count,
+            warning_count,
+        }
+    }
+
+    /// Run all passes in parallel using std::thread::scope.
+    fn run_passes_parallel(&self, project_root: &Path) -> Vec<PassResult> {
+        std::thread::scope(|s| {
+            let handles: Vec<_> = self
+                .passes
+                .iter()
+                .map(|pass| {
+                    let name = pass.name().to_string();
+                    s.spawn(move || (name, pass.run(project_root)))
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .map(|h| match h.join() {
+                    Ok((name, result)) => PassResult { name, result },
+                    Err(_) => PassResult {
+                        name: "<panicked>".to_string(),
+                        result: Err("analysis pass panicked".to_string()),
+                    },
+                })
+                .collect()
+        })
+    }
+}
+
+/// Filter diagnostics based on config ignore rules and ignore file patterns.
+pub fn filter_diagnostics(
+    diagnostics: Vec<Diagnostic>,
+    config: &ResolvedConfig,
+) -> Vec<Diagnostic> {
+    // Build ignore rule set
+    let ignored_rules: HashSet<&str> = config.ignore_rules.iter().map(|s| s.as_str()).collect();
+
+    // Build ignore file glob set
+    let ignore_files_set = build_glob_set(&config.ignore_files);
+    if let Err(ref e) = ignore_files_set {
+        eprintln!("Warning: could not build file ignore set: {e}");
+    }
+
+    diagnostics
+        .into_iter()
+        .filter(|d| {
+            // Filter by rule name
+            if ignored_rules.contains(d.rule.as_str()) {
+                return false;
+            }
+            // Filter by file pattern
+            if let Ok(ref glob_set) = ignore_files_set
+                && glob_set.is_match(&d.file_path)
+            {
+                return false;
+            }
+            true
+        })
+        .collect()
+}
+
+/// Build a GlobSet from a list of pattern strings.
+/// Returns an error if any pattern is invalid.
+fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        match Glob::new(pattern) {
+            Ok(glob) => {
+                builder.add(glob);
+            }
+            Err(e) => {
+                eprintln!("Warning: invalid glob pattern '{}': {}", pattern, e);
+            }
+        }
+    }
+    builder.build()
+}
+
+/// Count the number of .rs source files under a directory.
+pub fn count_source_files(root: &Path) -> usize {
+    count_rs_files_recursive(root)
+}
+
+fn count_rs_files_recursive(dir: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Use symlink_metadata to avoid following symlinks (prevents loops)
+        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if meta.is_dir() {
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            // Skip hidden dirs, target, and common non-source dirs
+            if !name.starts_with('.') && name != "target" {
+                count += count_rs_files_recursive(&path);
+            }
+        } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+            count += 1;
+        }
+        // Symlinks are skipped (meta.is_symlink() would be true for non-dir/file entries)
+    }
+    count
+}
+
+// --- Placeholder passes (will be replaced by US-006, US-008, US-012) ---
+
+/// Placeholder clippy analysis pass.
+pub struct ClippyPass;
+
+impl AnalysisPass for ClippyPass {
+    fn name(&self) -> &str {
+        "clippy"
+    }
+
+    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+        // Placeholder — real implementation in US-006
+        Ok(vec![])
+    }
+}
+
+/// Placeholder custom AST rules pass.
+pub struct CustomRulesPass;
+
+impl AnalysisPass for CustomRulesPass {
+    fn name(&self) -> &str {
+        "custom rules"
+    }
+
+    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+        // Placeholder — real implementation in US-008
+        Ok(vec![])
+    }
+}
+
+/// Placeholder dependency analysis pass.
+pub struct DependencyPass;
+
+impl AnalysisPass for DependencyPass {
+    fn name(&self) -> &str {
+        "dependencies"
+    }
+
+    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+        // Placeholder — real implementation in US-012/US-013
+        Ok(vec![])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::FailOn;
+    use crate::config::ResolvedConfig;
+    use crate::diagnostics::{Category, Severity};
+
+    fn make_config() -> ResolvedConfig {
+        ResolvedConfig {
+            ignore_rules: vec![],
+            ignore_files: vec![],
+            lint: true,
+            dependencies: true,
+            verbose: false,
+            diff: None,
+            fail_on: FailOn::None,
+        }
+    }
+
+    fn make_diagnostic(rule: &str, file: &str, severity: Severity) -> Diagnostic {
+        Diagnostic {
+            file_path: file.into(),
+            rule: rule.to_string(),
+            category: Category::ErrorHandling,
+            severity,
+            message: format!("Issue: {rule}"),
+            help: None,
+            line: Some(1),
+            column: None,
+        }
+    }
+
+    // --- Filter tests ---
+
+    #[test]
+    fn test_filter_no_config() {
+        let diags = vec![
+            make_diagnostic("rule1", "src/main.rs", Severity::Error),
+            make_diagnostic("rule2", "src/lib.rs", Severity::Warning),
+        ];
+        let config = make_config();
+        let filtered = filter_diagnostics(diags, &config);
+        assert_eq!(filtered.len(), 2);
+    }
+
+    #[test]
+    fn test_filter_by_rule_name() {
+        let diags = vec![
+            make_diagnostic("rule1", "src/main.rs", Severity::Error),
+            make_diagnostic("rule2", "src/lib.rs", Severity::Warning),
+        ];
+        let mut config = make_config();
+        config.ignore_rules = vec!["rule1".to_string()];
+        let filtered = filter_diagnostics(diags, &config);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].rule, "rule2");
+    }
+
+    #[test]
+    fn test_filter_by_file_pattern() {
+        let diags = vec![
+            make_diagnostic("rule1", "src/main.rs", Severity::Error),
+            make_diagnostic("rule2", "tests/test_foo.rs", Severity::Warning),
+            make_diagnostic("rule3", "tests/integration/test_bar.rs", Severity::Warning),
+        ];
+        let mut config = make_config();
+        config.ignore_files = vec!["tests/**".to_string()];
+        let filtered = filter_diagnostics(diags, &config);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].file_path.to_str().unwrap(), "src/main.rs");
+    }
+
+    #[test]
+    fn test_filter_by_both_rule_and_file() {
+        let diags = vec![
+            make_diagnostic("rule1", "src/main.rs", Severity::Error),
+            make_diagnostic("rule2", "tests/test.rs", Severity::Warning),
+            make_diagnostic("rule3", "src/lib.rs", Severity::Warning),
+        ];
+        let mut config = make_config();
+        config.ignore_rules = vec!["rule3".to_string()];
+        config.ignore_files = vec!["tests/**".to_string()];
+        let filtered = filter_diagnostics(diags, &config);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].rule, "rule1");
+    }
+
+    #[test]
+    fn test_filter_invalid_glob_continues() {
+        let diags = vec![make_diagnostic("rule1", "src/main.rs", Severity::Error)];
+        let mut config = make_config();
+        config.ignore_files = vec!["[invalid".to_string()];
+        // Should not panic — invalid globs are warned and skipped
+        let filtered = filter_diagnostics(diags, &config);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    // --- Orchestrator tests ---
+
+    struct SuccessPass {
+        diags: Vec<Diagnostic>,
+    }
+
+    impl AnalysisPass for SuccessPass {
+        fn name(&self) -> &str {
+            "success"
+        }
+        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, String> {
+            Ok(self.diags.clone())
+        }
+    }
+
+    struct FailingPass;
+
+    impl AnalysisPass for FailingPass {
+        fn name(&self) -> &str {
+            "failing"
+        }
+        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, String> {
+            Err("pass failed".to_string())
+        }
+    }
+
+    #[test]
+    fn test_orchestrator_merges_results() {
+        let pass1 = SuccessPass {
+            diags: vec![make_diagnostic("r1", "a.rs", Severity::Error)],
+        };
+        let pass2 = SuccessPass {
+            diags: vec![make_diagnostic("r2", "b.rs", Severity::Warning)],
+        };
+        let orch = ScanOrchestrator::new(vec![Box::new(pass1), Box::new(pass2)]);
+        let config = make_config();
+        let result = orch.run(Path::new("."), &config, 10, true);
+        assert_eq!(result.diagnostics.len(), 2);
+        assert_eq!(result.error_count, 1);
+        assert_eq!(result.warning_count, 1);
+        assert!(result.skipped_passes.is_empty());
+    }
+
+    #[test]
+    fn test_orchestrator_handles_failed_pass() {
+        let pass1 = SuccessPass {
+            diags: vec![make_diagnostic("r1", "a.rs", Severity::Error)],
+        };
+        let orch = ScanOrchestrator::new(vec![Box::new(pass1), Box::new(FailingPass)]);
+        let config = make_config();
+        let result = orch.run(Path::new("."), &config, 10, true);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.skipped_passes, vec!["failing"]);
+    }
+
+    #[test]
+    fn test_orchestrator_all_passes_fail() {
+        let orch = ScanOrchestrator::new(vec![Box::new(FailingPass), Box::new(FailingPass)]);
+        let config = make_config();
+        let result = orch.run(Path::new("."), &config, 0, true);
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.skipped_passes.len(), 2);
+    }
+
+    #[test]
+    fn test_orchestrator_no_passes() {
+        let orch = ScanOrchestrator::new(vec![]);
+        let config = make_config();
+        let result = orch.run(Path::new("."), &config, 0, true);
+        assert!(result.diagnostics.is_empty());
+        assert!(result.skipped_passes.is_empty());
+    }
+
+    #[test]
+    fn test_orchestrator_applies_config_filter() {
+        let pass = SuccessPass {
+            diags: vec![
+                make_diagnostic("rule-to-ignore", "src/main.rs", Severity::Warning),
+                make_diagnostic("rule-to-keep", "src/main.rs", Severity::Error),
+            ],
+        };
+        let orch = ScanOrchestrator::new(vec![Box::new(pass)]);
+        let mut config = make_config();
+        config.ignore_rules = vec!["rule-to-ignore".to_string()];
+        let result = orch.run(Path::new("."), &config, 5, true);
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].rule, "rule-to-keep");
+    }
+
+    // --- Source file counting ---
+
+    #[test]
+    fn test_count_source_files_self() {
+        let count = count_source_files(Path::new(env!("CARGO_MANIFEST_DIR")));
+        // rust-doctor has at least 5 .rs files (main, cli, config, discovery, diagnostics, scanner)
+        assert!(count >= 6, "Expected at least 6 .rs files, found {count}");
+    }
+
+    #[test]
+    fn test_count_source_files_nonexistent() {
+        let count = count_source_files(Path::new("/nonexistent/path"));
+        assert_eq!(count, 0);
+    }
+}

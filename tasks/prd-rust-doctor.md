@@ -169,13 +169,13 @@ Foundation: CLI skeleton, project discovery, configuration, scan orchestrator, s
 **As a** rust-doctor core, **I want to** orchestrate multiple analysis passes in parallel and merge results **so that** scanning is fast and comprehensive.
 
 **Acceptance Criteria:**
-- [ ] Define `Diagnostic` struct: `file_path`, `rule`, `category`, `severity` (Error/Warning), `message`, `help`, `line`, `column`
-- [ ] Define `ScanResult` struct: `diagnostics: Vec<Diagnostic>`, `project: ProjectInfo`, `elapsed: Duration`, `source_file_count: usize`
-- [ ] Scan orchestrator runs analysis passes in parallel using `std::thread` or `rayon`
-- [ ] Analysis passes (pluggable): clippy pass, custom rules pass, dependency pass — each returns `Vec<Diagnostic>`
-- [ ] Combined diagnostics are filtered by config `ignore.rules` and `ignore.files`
-- [ ] Spinner displayed during scan using `indicatif` (suppressed when `--score` or `--json` flag)
-- [ ] Error: if all analysis passes fail, print "No analysis could be completed" with individual pass errors
+- [x] Define `Diagnostic` struct: `file_path`, `rule`, `category`, `severity` (Error/Warning), `message`, `help`, `line`, `column`
+- [x] Define `ScanResult` struct: `diagnostics: Vec<Diagnostic>`, `project: ProjectInfo`, `elapsed: Duration`, `source_file_count: usize`
+- [x] Scan orchestrator runs analysis passes in parallel using `std::thread` or `rayon`
+- [x] Analysis passes (pluggable): clippy pass, custom rules pass, dependency pass — each returns `Vec<Diagnostic>`
+- [x] Combined diagnostics are filtered by config `ignore.rules` and `ignore.files`
+- [x] Spinner displayed during scan using `indicatif` (suppressed when `--score` or `--json` flag)
+- [x] Error: if all analysis passes fail, print "No analysis could be completed" with individual pass errors
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-002, US-003
 
