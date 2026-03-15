@@ -88,6 +88,8 @@ pub struct ProjectInfo {
     pub rust_version: Option<String>,
     /// Whether the project declares `#![no_std]`.
     pub is_no_std: bool,
+    /// The `[package.metadata]` table from Cargo.toml (for config fallback).
+    pub package_metadata: serde_json::Value,
 }
 
 /// Run cargo metadata and discover project characteristics.
@@ -140,6 +142,8 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
     // Detect #![no_std] from primary package's lib.rs or main.rs
     let is_no_std = detect_no_std(primary);
 
+    let package_metadata = primary.metadata.clone();
+
     Ok(ProjectInfo {
         root_dir: workspace_root,
         name,
@@ -151,6 +155,7 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
         has_build_script,
         rust_version,
         is_no_std,
+        package_metadata,
     })
 }
 

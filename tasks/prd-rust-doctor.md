@@ -153,12 +153,12 @@ Foundation: CLI skeleton, project discovery, configuration, scan orchestrator, s
 **As a** developer, **I want to** configure which rules to ignore and which files to skip **so that** rust-doctor works for my project's specific needs.
 
 **Acceptance Criteria:**
-- [ ] Load config from `rust-doctor.toml` in project root (first priority)
-- [ ] Fall back to `[package.metadata.rust-doctor]` in Cargo.toml
-- [ ] Config shape: `ignore.rules: Vec<String>`, `ignore.files: Vec<String>` (glob patterns), `lint: bool`, `dependencies: bool`, `verbose: bool`, `diff: Option<String>`, `fail_on: String`
-- [ ] CLI flags override config file values
-- [ ] Invalid config file prints warning with specific parse error and continues with defaults
-- [ ] Error: config references a non-existent rule name → print warning listing valid rule names
+- [x] Load config from `rust-doctor.toml` in project root (first priority)
+- [x] Fall back to `[package.metadata.rust-doctor]` in Cargo.toml
+- [x] Config shape: `ignore.rules: Vec<String>`, `ignore.files: Vec<String>` (glob patterns), `lint: bool`, `dependencies: bool`, `verbose: bool`, `diff: Option<String>`, `fail_on: String`
+- [x] CLI flags override config file values
+- [x] Invalid config file prints warning with specific parse error and continues with defaults
+- [x] Error: config references a non-existent rule name → print warning listing valid rule names
 
 **Priority:** P0 | **Size:** S (2 pts) | **Blocked by:** US-001
 

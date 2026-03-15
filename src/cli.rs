@@ -30,8 +30,8 @@ pub struct Cli {
     pub diff: Option<String>,
 
     /// Exit with code 1 when this severity is reached
-    #[arg(long, value_enum, default_value_t = FailOn::None)]
-    pub fail_on: FailOn,
+    #[arg(long, value_enum)]
+    pub fail_on: Option<FailOn>,
 
     /// Skip network-dependent checks (cargo-audit advisory DB fetch, etc.)
     #[arg(long)]
@@ -64,6 +64,16 @@ pub enum FailOn {
     Warning,
     /// Always exit 0 (unless rust-doctor itself crashes)
     None,
+}
+
+impl std::fmt::Display for FailOn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Error => write!(f, "error"),
+            Self::Warning => write!(f, "warning"),
+            Self::None => write!(f, "none"),
+        }
+    }
 }
 
 /// Environment variables that indicate an automated/CI environment.
@@ -152,25 +162,25 @@ mod tests {
     #[test]
     fn test_fail_on_default() {
         let cli = Cli::try_parse_from(["rust-doctor"]).unwrap();
-        assert_eq!(cli.fail_on, FailOn::None);
+        assert_eq!(cli.fail_on, Option::None);
     }
 
     #[test]
     fn test_fail_on_error() {
         let cli = Cli::try_parse_from(["rust-doctor", "--fail-on", "error"]).unwrap();
-        assert_eq!(cli.fail_on, FailOn::Error);
+        assert_eq!(cli.fail_on, Some(FailOn::Error));
     }
 
     #[test]
     fn test_fail_on_warning() {
         let cli = Cli::try_parse_from(["rust-doctor", "--fail-on", "warning"]).unwrap();
-        assert_eq!(cli.fail_on, FailOn::Warning);
+        assert_eq!(cli.fail_on, Some(FailOn::Warning));
     }
 
     #[test]
     fn test_fail_on_none() {
         let cli = Cli::try_parse_from(["rust-doctor", "--fail-on", "none"]).unwrap();
-        assert_eq!(cli.fail_on, FailOn::None);
+        assert_eq!(cli.fail_on, Some(FailOn::None));
     }
 
     #[test]
@@ -194,7 +204,7 @@ mod tests {
     #[test]
     fn test_diff_absent() {
         let cli = Cli::try_parse_from(["rust-doctor"]).unwrap();
-        assert_eq!(cli.diff, None);
+        assert_eq!(cli.diff, Option::None);
     }
 
     #[test]
@@ -260,7 +270,7 @@ mod tests {
         assert!(cli.score);
         assert!(!cli.json);
         assert_eq!(cli.diff, Some("develop".to_string()));
-        assert_eq!(cli.fail_on, FailOn::Warning);
+        assert_eq!(cli.fail_on, Some(FailOn::Warning));
         assert!(cli.offline);
         assert!(cli.yes);
         assert_eq!(cli.project, vec!["core", "api"]);

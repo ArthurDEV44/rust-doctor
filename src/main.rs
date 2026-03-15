@@ -1,4 +1,5 @@
 mod cli;
+mod config;
 mod discovery;
 
 use clap::Parser;
@@ -46,7 +47,18 @@ fn main() {
         }
     };
 
-    if cli.verbose {
+    // Load configuration (rust-doctor.toml > [package.metadata.rust-doctor] > defaults)
+    let file_config =
+        config::load_file_config(&project_info.root_dir, Some(&project_info.package_metadata));
+
+    // Merge CLI flags with file config
+    let resolved = config::resolve_config(&cli, file_config.as_ref());
+
+    // Validate ignored rule names against known rules (registry grows in US-008+)
+    let known_rules: &[&str] = &[];
+    config::validate_ignored_rules(&resolved.ignore_rules, known_rules);
+
+    if resolved.verbose {
         eprintln!(
             "Project: {} v{} (edition {})",
             project_info.name, project_info.version, project_info.edition
@@ -71,6 +83,13 @@ fn main() {
         if let Some(ref rv) = project_info.rust_version {
             eprintln!("MSRV: {rv}");
         }
+        if !resolved.ignore_rules.is_empty() {
+            eprintln!("Ignoring rules: {}", resolved.ignore_rules.join(", "));
+        }
+        if !resolved.ignore_files.is_empty() {
+            eprintln!("Ignoring files: {}", resolved.ignore_files.join(", "));
+        }
+        eprintln!("Fail on: {}", resolved.fail_on);
     }
 
     // Placeholder: future stories will add scan orchestration here
