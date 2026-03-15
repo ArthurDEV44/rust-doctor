@@ -94,9 +94,10 @@ fn main() {
     let source_file_count = scanner::count_source_files(&project_info.root_dir);
 
     // Build custom rules based on detected project characteristics
-    let custom_rules: Vec<Box<dyn rules::CustomRule>> = vec![
-        // Rules will be added in US-009, US-010, US-011, US-014, US-015
-    ];
+    let mut custom_rules: Vec<Box<dyn rules::CustomRule>> = Vec::new();
+
+    // Error handling rules (US-009)
+    custom_rules.extend(rules::error_handling::all_rules());
 
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![

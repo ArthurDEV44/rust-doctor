@@ -269,13 +269,13 @@ Rules that go beyond clippy: patterns specific to rust-doctor's opinionated anal
 **As a** developer, **I want** rust-doctor to catch error handling anti-patterns **so that** my code handles failures gracefully.
 
 **Rules implemented:**
-- [ ] `unwrap-in-production`: Flag `.unwrap()` and `.expect()` calls outside of `#[test]` and `#[cfg(test)]` modules — severity: Warning
-- [ ] `panic-in-library`: Flag `panic!()`, `todo!()`, `unimplemented!()` in library crates (not binary crates) — severity: Error
-- [ ] `box-dyn-error-in-public-api`: Flag public functions returning `Box<dyn Error>` or `Box<dyn std::error::Error>` — severity: Warning
-- [ ] `result-unit-error`: Flag `Result<T, ()>` in public APIs — severity: Warning
-- [ ] Each rule produces diagnostics with actionable help text (e.g., "Use `?` with `anyhow::Result` or define a custom error type with `thiserror`")
-- [ ] Rules correctly skip `#[test]` functions and `#[cfg(test)]` modules
-- [ ] Error: false positive on `.unwrap()` called on `Option<Infallible>` or after `.is_some()` check — accepted as known limitation, documentable via inline suppression
+- [x] `unwrap-in-production`: Flag `.unwrap()` and `.expect()` calls outside of `#[test]` and `#[cfg(test)]` modules — severity: Warning
+- [x] `panic-in-library`: Flag `panic!()`, `todo!()`, `unimplemented!()` in library crates (not binary crates) — severity: Error
+- [x] `box-dyn-error-in-public-api`: Flag public functions returning `Box<dyn Error>` or `Box<dyn std::error::Error>` — severity: Warning
+- [x] `result-unit-error`: Flag `Result<T, ()>` in public APIs — severity: Warning
+- [x] Each rule produces diagnostics with actionable help text (e.g., "Use `?` with `anyhow::Result` or define a custom error type with `thiserror`")
+- [x] Rules correctly skip `#[test]` functions and `#[cfg(test)]` modules
+- [x] Error: false positive on `.unwrap()` called on `Option<Infallible>` or after `.is_some()` check — accepted as known limitation, documentable via inline suppression
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-008
 

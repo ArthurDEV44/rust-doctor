@@ -419,6 +419,7 @@ dependencies = [
  "globset",
  "indicatif",
  "owo-colors",
+ "proc-macro2",
  "rayon",
  "serde",
  "serde_json",

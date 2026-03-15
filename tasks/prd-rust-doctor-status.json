@@ -28,7 +28,7 @@
       "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 4,
-      "stories_done": 1
+      "stories_done": 2
     },
     {
       "id": "EP-004",
@@ -164,13 +164,13 @@
       "id": "US-009",
       "title": "Error handling rules",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-008"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-010",

@@ -1,3 +1,5 @@
+pub mod error_handling;
+
 use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::scanner::AnalysisPass;
 use globset::{Glob, GlobSet, GlobSetBuilder};
