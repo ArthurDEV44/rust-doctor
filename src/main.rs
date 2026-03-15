@@ -1,4 +1,5 @@
 mod cli;
+mod discovery;
 
 use clap::Parser;
 use cli::Cli;
@@ -36,6 +37,45 @@ fn main() {
 
     let _skip_prompts = cli::should_skip_prompts(&cli);
 
+    // Discover project characteristics
+    let project_info = match discovery::discover_project(&cargo_toml, cli.offline) {
+        Ok(info) => info,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            process::exit(1);
+        }
+    };
+
+    if cli.verbose {
+        eprintln!(
+            "Project: {} v{} (edition {})",
+            project_info.name, project_info.version, project_info.edition
+        );
+        if project_info.is_workspace {
+            eprintln!("Workspace: {} members", project_info.member_count);
+        }
+        if !project_info.frameworks.is_empty() {
+            let fw_list: Vec<String> = project_info
+                .frameworks
+                .iter()
+                .map(|f| f.to_string())
+                .collect();
+            eprintln!("Frameworks: {}", fw_list.join(", "));
+        }
+        if project_info.is_no_std {
+            eprintln!("Mode: no_std");
+        }
+        if project_info.has_build_script {
+            eprintln!("Build script: yes");
+        }
+        if let Some(ref rv) = project_info.rust_version {
+            eprintln!("MSRV: {rv}");
+        }
+    }
+
     // Placeholder: future stories will add scan orchestration here
-    println!("rust-doctor: scanning '{}'...", target_dir.display());
+    println!(
+        "rust-doctor: scanning '{}'...",
+        project_info.root_dir.display()
+    );
 }

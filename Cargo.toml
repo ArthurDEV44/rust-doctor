@@ -10,4 +10,5 @@ keywords = ["lint", "clippy", "code-quality", "health", "diagnostics"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
+cargo_metadata = "0.19"
 clap = { version = "4.6", features = ["derive"] }

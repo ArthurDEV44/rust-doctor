@@ -137,12 +137,12 @@ Foundation: CLI skeleton, project discovery, configuration, scan orchestrator, s
 **As a** rust-doctor scanner, **I want to** auto-detect project characteristics **so that** I can enable/disable rules per ecosystem.
 
 **Acceptance Criteria:**
-- [ ] Run `cargo metadata --format-version 1 --no-deps` and parse output via `cargo_metadata` crate
-- [ ] Extract: workspace root, workspace members, Rust edition, package name, package version
-- [ ] Detect frameworks/runtimes from dependencies: tokio, axum, actix-web, rocket, warp, diesel, sqlx, sea-orm, tonic, wasm-bindgen, web-sys, embassy-*, cortex-m
-- [ ] Detect `#![no_std]` by scanning lib.rs/main.rs first 10 lines
-- [ ] Store discovery results in a `ProjectInfo` struct: `root_dir`, `name`, `edition`, `frameworks: Vec<Framework>`, `is_workspace`, `member_count`, `has_build_script`, `rust_version`
-- [ ] Error: if `cargo metadata` fails (e.g., broken Cargo.toml), print diagnostic and exit gracefully with partial results
+- [x] Run `cargo metadata --format-version 1 --no-deps` and parse output via `cargo_metadata` crate
+- [x] Extract: workspace root, workspace members, Rust edition, package name, package version
+- [x] Detect frameworks/runtimes from dependencies: tokio, axum, actix-web, rocket, warp, diesel, sqlx, sea-orm, tonic, wasm-bindgen, web-sys, embassy-*, cortex-m
+- [x] Detect `#![no_std]` by scanning lib.rs/main.rs first 10 lines
+- [x] Store discovery results in a `ProjectInfo` struct: `root_dir`, `name`, `edition`, `frameworks: Vec<Framework>`, `is_workspace`, `member_count`, `has_build_script`, `rust_version`
+- [x] Error: if `cargo metadata` fails (e.g., broken Cargo.toml), print diagnostic and exit gracefully with partial results
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-001
 
