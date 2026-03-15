@@ -4,6 +4,7 @@ mod config;
 mod diagnostics;
 mod discovery;
 mod output;
+mod rules;
 mod scanner;
 
 use clap::Parser;
@@ -92,10 +93,18 @@ fn main() {
     // Count source files
     let source_file_count = scanner::count_source_files(&project_info.root_dir);
 
+    // Build custom rules based on detected project characteristics
+    let custom_rules: Vec<Box<dyn rules::CustomRule>> = vec![
+        // Rules will be added in US-009, US-010, US-011, US-014, US-015
+    ];
+
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),
-        Box::new(scanner::CustomRulesPass),
+        Box::new(rules::RuleEnginePass::new(
+            custom_rules,
+            resolved.ignore_files.clone(),
+        )),
         Box::new(scanner::DependencyPass),
     ];
 

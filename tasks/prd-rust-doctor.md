@@ -252,13 +252,13 @@ Rules that go beyond clippy: patterns specific to rust-doctor's opinionated anal
 **As a** rust-doctor developer, **I want** a rule engine that walks Rust AST via syn **so that** I can implement custom rules clippy doesn't cover.
 
 **Acceptance Criteria:**
-- [ ] Define `CustomRule` trait: `fn name(&self) -> &str`, `fn category(&self) -> Category`, `fn severity(&self) -> Severity`, `fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic>`
-- [ ] Rule registry: `Vec<Box<dyn CustomRule>>` populated at startup based on detected frameworks
-- [ ] For each `.rs` file in the project's `src/` directory: read file, parse with `syn::parse_file()`, run all registered rules
-- [ ] Skip files matching `ignore.files` config patterns
-- [ ] Parse errors are non-fatal: log warning and skip the file
-- [ ] Files are processed in parallel using rayon
-- [ ] Error: if a custom rule panics, catch it, log the rule name and file path, and continue with remaining rules
+- [x] Define `CustomRule` trait: `fn name(&self) -> &str`, `fn category(&self) -> Category`, `fn severity(&self) -> Severity`, `fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic>`
+- [x] Rule registry: `Vec<Box<dyn CustomRule>>` populated at startup based on detected frameworks
+- [x] For each `.rs` file in the project's `src/` directory: read file, parse with `syn::parse_file()`, run all registered rules
+- [x] Skip files matching `ignore.files` config patterns
+- [x] Parse errors are non-fatal: log warning and skip the file
+- [x] Files are processed in parallel using rayon
+- [x] Error: if a custom rule panics, catch it, log the rule name and file path, and continue with remaining rules
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-004
 

@@ -230,21 +230,7 @@ fn count_rs_files_recursive(dir: &Path) -> usize {
     count
 }
 
-// --- Placeholder passes (will be replaced by US-008, US-012) ---
-
-/// Placeholder custom AST rules pass.
-pub struct CustomRulesPass;
-
-impl AnalysisPass for CustomRulesPass {
-    fn name(&self) -> &str {
-        "custom rules"
-    }
-
-    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-        // Placeholder — real implementation in US-008
-        Ok(vec![])
-    }
-}
+// --- Placeholder passes (will be replaced by US-012) ---
 
 /// Placeholder dependency analysis pass.
 pub struct DependencyPass;

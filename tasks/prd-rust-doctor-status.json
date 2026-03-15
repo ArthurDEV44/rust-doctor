@@ -25,10 +25,10 @@
     {
       "id": "EP-003",
       "title": "Custom AST Rules via syn",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 4,
-      "stories_done": 0
+      "stories_done": 1
     },
     {
       "id": "EP-004",
@@ -152,13 +152,13 @@
       "id": "US-008",
       "title": "syn-based rule engine with file visitor",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-009",
