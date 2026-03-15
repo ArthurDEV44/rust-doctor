@@ -82,6 +82,10 @@ pub struct Diagnostic {
 pub struct ScanResult {
     /// All diagnostics found (after filtering).
     pub diagnostics: Vec<Diagnostic>,
+    /// Health score (0–100).
+    pub score: u32,
+    /// Score label (e.g. "Great", "Needs work", "Critical").
+    pub score_label: String,
     /// Number of source files scanned.
     pub source_file_count: usize,
     /// Total scan duration.
@@ -160,6 +164,8 @@ mod tests {
     fn test_scan_result_serialize() {
         let result = ScanResult {
             diagnostics: vec![],
+            score: 100,
+            score_label: "Great".to_string(),
             source_file_count: 10,
             elapsed: Duration::from_millis(1500),
             skipped_passes: vec![],
@@ -167,6 +173,8 @@ mod tests {
             warning_count: 0,
         };
         let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["score"], 100);
+        assert_eq!(json["score_label"], "Great");
         assert_eq!(json["source_file_count"], 10);
         assert_eq!(json["elapsed"], 1.5);
         assert_eq!(json["error_count"], 0);

@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod diagnostics;
 mod discovery;
+mod output;
 mod scanner;
 
 use clap::Parser;
@@ -109,25 +110,11 @@ fn main() {
 
     // Output results based on mode
     if cli.score {
-        // Bare score output — placeholder until US-005
-        println!("100");
+        output::render_score(&scan_result);
     } else if cli.json {
-        match serde_json::to_string_pretty(&scan_result) {
-            Ok(json) => println!("{json}"),
-            Err(e) => {
-                eprintln!("Error: failed to serialize scan results: {e}");
-                process::exit(1);
-            }
-        }
+        output::render_json(&scan_result);
     } else {
-        // Normal terminal output — placeholder until US-005
-        println!(
-            "rust-doctor: scanned {} files in {:.1}s — {} error(s), {} warning(s)",
-            scan_result.source_file_count,
-            scan_result.elapsed.as_secs_f64(),
-            scan_result.error_count,
-            scan_result.warning_count,
-        );
+        output::render_terminal(&scan_result, resolved.verbose);
     }
 
     // Exit code based on fail_on config

@@ -9,10 +9,10 @@
     {
       "id": "EP-001",
       "title": "Core Infrastructure",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 4
+      "stories_done": 5
     },
     {
       "id": "EP-002",
@@ -116,13 +116,13 @@
       "id": "US-005",
       "title": "Score calculation and terminal output",
       "epic": "EP-001",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-006",

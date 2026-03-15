@@ -1,5 +1,6 @@
 use crate::config::ResolvedConfig;
 use crate::diagnostics::{Diagnostic, ScanResult, Severity};
+use crate::output;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
@@ -108,8 +109,13 @@ impl ScanOrchestrator {
             .filter(|d| d.severity == Severity::Warning)
             .count();
 
+        // Calculate score
+        let (score, score_label) = output::calculate_score(&filtered);
+
         ScanResult {
             diagnostics: filtered,
+            score,
+            score_label,
             source_file_count,
             elapsed: start.elapsed(),
             skipped_passes,

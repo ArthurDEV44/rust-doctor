@@ -186,17 +186,17 @@ Foundation: CLI skeleton, project discovery, configuration, scan orchestrator, s
 **As a** developer, **I want to** see a health score and formatted diagnostics in my terminal **so that** I can quickly assess my codebase's health.
 
 **Acceptance Criteria:**
-- [ ] Score formula: `100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75)`, clamped to 0–100
-- [ ] Score is calculated per unique rule violated (not per occurrence), matching react-doctor's approach
-- [ ] ASCII framed box output with doctor face: happy (score >= 75), neutral (50-74), sad (<50)
-- [ ] Box displays: score with label ("Great"/"Needs work"/"Critical"), progress bar, error count, warning count, files scanned, scan duration
-- [ ] `--score` flag: print bare integer to stdout only (for CI piping)
-- [ ] `--json` flag: print full `ScanResult` as JSON to stdout
-- [ ] `--verbose` flag: show file:line details per diagnostic
-- [ ] Diagnostics grouped by severity (errors first, then warnings), each showing rule name, message, occurrence count
-- [ ] `--fail-on error`: exit code 1 if any errors found. `--fail-on warning`: exit code 1 if any errors or warnings
-- [ ] Colors respect `NO_COLOR` env var via owo-colors
-- [ ] Error: score calculation with zero files scanned prints "No Rust source files found" instead of showing 100/100
+- [x] Score formula: `100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75)`, clamped to 0–100
+- [x] Score is calculated per unique rule violated (not per occurrence), matching react-doctor's approach
+- [x] ASCII framed box output with doctor face: happy (score >= 75), neutral (50-74), sad (<50)
+- [x] Box displays: score with label ("Great"/"Needs work"/"Critical"), progress bar, error count, warning count, files scanned, scan duration
+- [x] `--score` flag: print bare integer to stdout only (for CI piping)
+- [x] `--json` flag: print full `ScanResult` as JSON to stdout
+- [x] `--verbose` flag: show file:line details per diagnostic
+- [x] Diagnostics grouped by severity (errors first, then warnings), each showing rule name, message, occurrence count
+- [x] `--fail-on error`: exit code 1 if any errors found. `--fail-on warning`: exit code 1 if any errors or warnings
+- [x] Colors respect `NO_COLOR` env var via owo-colors
+- [x] Error: score calculation with zero files scanned prints "No Rust source files found" instead of showing 100/100
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-004
 
