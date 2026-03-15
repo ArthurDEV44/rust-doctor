@@ -3,16 +3,16 @@
     "file": "tasks/prd-rust-doctor.md",
     "title": "rust-doctor",
     "created_at": "2026-03-15",
-    "status": "DRAFT"
+    "status": "IN_PROGRESS"
   },
   "epics": [
     {
       "id": "EP-001",
       "title": "Core Infrastructure",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 1
     },
     {
       "id": "EP-002",
@@ -68,13 +68,13 @@
       "id": "US-001",
       "title": "Initialize Cargo project with clap CLI",
       "epic": "EP-001",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": [],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-002",

@@ -120,13 +120,13 @@ Foundation: CLI skeleton, project discovery, configuration, scan orchestrator, s
 **As a** Rust developer, **I want to** run `rust-doctor [directory]` from the terminal **so that** I can scan my project with a single command.
 
 **Acceptance Criteria:**
-- [ ] Cargo binary crate initialized with `name = "rust-doctor"`, edition 2024
-- [ ] clap 4 derive API parses: positional `directory` (default `.`), `--verbose`, `--score`, `--json`, `--diff [base]`, `--fail-on <error|warning|none>`, `--offline`, `-y/--yes`, `--project <names>`, `-v/--version`, `-h/--help`
-- [ ] Running `rust-doctor --version` prints version from Cargo.toml
-- [ ] Running `rust-doctor --help` prints formatted help text
-- [ ] Running `rust-doctor` with no args defaults to scanning current directory
-- [ ] Error: running in a directory with no Cargo.toml prints clear error message and exits with code 1
-- [ ] CI environment auto-detection: skip interactive prompts when `CI`, `CLAUDECODE`, `CURSOR_AGENT`, `CODEX_CI` env vars are set
+- [x] Cargo binary crate initialized with `name = "rust-doctor"`, edition 2024
+- [x] clap 4 derive API parses: positional `directory` (default `.`), `--verbose`, `--score`, `--json`, `--diff [base]`, `--fail-on <error|warning|none>`, `--offline`, `-y/--yes`, `--project <names>`, `-v/--version`, `-h/--help`
+- [x] Running `rust-doctor --version` prints version from Cargo.toml
+- [x] Running `rust-doctor --help` prints formatted help text
+- [x] Running `rust-doctor` with no args defaults to scanning current directory
+- [x] Error: running in a directory with no Cargo.toml prints clear error message and exits with code 1
+- [x] CI environment auto-detection: skip interactive prompts when `CI`, `CLAUDECODE`, `CURSOR_AGENT`, `CODEX_CI` env vars are set
 
 **Priority:** P0 | **Size:** S (2 pts) | **Blocked by:** —
 
