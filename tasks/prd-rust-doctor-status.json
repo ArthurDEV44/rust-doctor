@@ -17,10 +17,10 @@
     {
       "id": "EP-002",
       "title": "Clippy Analysis Pass",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 2,
-      "stories_done": 1
+      "stories_done": 2
     },
     {
       "id": "EP-003",
@@ -140,13 +140,13 @@
       "id": "US-007",
       "title": "Clippy lint category mapping and allow-directive handling",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "S",
       "blocked_by": ["US-006"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-008",

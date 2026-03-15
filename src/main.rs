@@ -58,9 +58,9 @@ fn main() {
     // Merge CLI flags with file config
     let resolved = config::resolve_config(&cli, file_config.as_ref());
 
-    // Validate ignored rule names against known rules (registry grows in US-008+)
-    let known_rules: &[&str] = &[];
-    config::validate_ignored_rules(&resolved.ignore_rules, known_rules);
+    // Validate ignored rule names against known lint names
+    let known_rules = clippy::known_lint_names();
+    config::validate_ignored_rules(&resolved.ignore_rules, &known_rules);
 
     if resolved.verbose {
         eprintln!(

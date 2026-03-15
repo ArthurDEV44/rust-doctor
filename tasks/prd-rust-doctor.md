@@ -231,11 +231,11 @@ Integrate cargo clippy as the primary linting backend.
 **As a** developer, **I want** rust-doctor to see the real state of my code, not what clippy allows have hidden **so that** the health score reflects actual code quality.
 
 **Acceptance Criteria:**
-- [ ] Before running clippy, generate a temporary clippy.toml or pass `-W` flags that re-enable commonly suppressed lints
-- [ ] Map 50+ most impactful clippy lints to rust-doctor categories with assigned severities (see mapping table in Technical Considerations)
-- [ ] Lints not in the mapping table inherit clippy's default severity
-- [ ] `rust-doctor-disable-next-line <rule>` comments in source code are NOT processed during clippy pass (they're handled in the diagnostic filter step, US-018)
-- [ ] Error: invalid lint name in mapping table logs a warning at startup
+- [x] Before running clippy, generate a temporary clippy.toml or pass `-W` flags that re-enable commonly suppressed lints
+- [x] Map 50+ most impactful clippy lints to rust-doctor categories with assigned severities (see mapping table in Technical Considerations)
+- [x] Lints not in the mapping table inherit clippy's default severity
+- [x] `rust-doctor-disable-next-line <rule>` comments in source code are NOT processed during clippy pass (they're handled in the diagnostic filter step, US-018)
+- [x] Error: invalid lint name in mapping table logs a warning at startup
 
 **Priority:** P0 | **Size:** S (2 pts) | **Blocked by:** US-006
 

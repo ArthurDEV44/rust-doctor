@@ -13,6 +13,462 @@ use std::time::Duration;
 /// Timeout for clippy subprocess in seconds.
 const CLIPPY_TIMEOUT_SECS: u64 = 120;
 
+// ---------------------------------------------------------------------------
+// Lint registry — data-driven mapping of clippy lints to categories/severities
+// ---------------------------------------------------------------------------
+
+/// A single entry in the lint-to-category mapping table.
+struct LintEntry {
+    /// Lint name without the `clippy::` prefix.
+    name: &'static str,
+    category: Category,
+    /// Severity override — takes precedence over clippy's default.
+    severity: Severity,
+}
+
+/// Registry of 55+ impactful clippy lints with explicit category and severity.
+/// Lints NOT in this table inherit clippy's default severity and map to `Style`.
+static LINT_REGISTRY: &[LintEntry] = &[
+    // ── Error Handling ──────────────────────────────────────────────────
+    LintEntry {
+        name: "unwrap_used",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "expect_used",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "panic",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "indexing_slicing",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "unwrap_in_result",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "panic_in_result_fn",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "exit",
+        category: Category::ErrorHandling,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "map_unwrap_or",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "option_if_let_else",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "question_mark",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "manual_ok_or",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "result_unit_err",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "result_large_err",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "let_underscore_must_use",
+        category: Category::ErrorHandling,
+        severity: Severity::Warning,
+    },
+    // ── Performance ─────────────────────────────────────────────────────
+    LintEntry {
+        name: "box_collection",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "clone_on_copy",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "redundant_clone",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "needless_collect",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "large_enum_variant",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "inefficient_to_string",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "unnecessary_to_owned",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "large_stack_arrays",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "large_futures",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "single_char_pattern",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cmp_owned",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cloned_instead_of_copied",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "suboptimal_flops",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "or_fun_call",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "trivially_copy_pass_by_ref",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "useless_vec",
+        category: Category::Performance,
+        severity: Severity::Warning,
+    },
+    // ── Security ────────────────────────────────────────────────────────
+    LintEntry {
+        name: "undocumented_unsafe_blocks",
+        category: Category::Security,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "multiple_unsafe_ops_per_block",
+        category: Category::Security,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "transmute_ptr_to_ref",
+        category: Category::Security,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "cast_ptr_alignment",
+        category: Category::Security,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "fn_to_numeric_cast",
+        category: Category::Security,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "mem_forget",
+        category: Category::Security,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cast_possible_truncation",
+        category: Category::Security,
+        severity: Severity::Warning,
+    },
+    // ── Correctness ─────────────────────────────────────────────────────
+    LintEntry {
+        name: "almost_swapped",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "approx_constant",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "bad_bit_mask",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "absurd_extreme_comparisons",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "invalid_regex",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "wrong_self_convention",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cast_sign_loss",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cast_possible_wrap",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cast_lossless",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "float_cmp",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "eq_op",
+        category: Category::Correctness,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "match_overlapping_arm",
+        category: Category::Correctness,
+        severity: Severity::Warning,
+    },
+    // ── Cargo ───────────────────────────────────────────────────────────
+    LintEntry {
+        name: "wildcard_dependencies",
+        category: Category::Cargo,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "multiple_crate_versions",
+        category: Category::Cargo,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cargo_common_metadata",
+        category: Category::Cargo,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "negative_feature_names",
+        category: Category::Cargo,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "redundant_feature_names",
+        category: Category::Cargo,
+        severity: Severity::Warning,
+    },
+    // ── Async ───────────────────────────────────────────────────────────
+    LintEntry {
+        name: "await_holding_lock",
+        category: Category::Async,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "await_holding_refcell_ref",
+        category: Category::Async,
+        severity: Severity::Error,
+    },
+    LintEntry {
+        name: "unused_async",
+        category: Category::Async,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "redundant_async_block",
+        category: Category::Async,
+        severity: Severity::Warning,
+    },
+    // ── Architecture ────────────────────────────────────────────────────
+    LintEntry {
+        name: "struct_excessive_bools",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "fn_params_excessive_bools",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "too_many_lines",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "cognitive_complexity",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "type_complexity",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "too_many_arguments",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "module_name_repetitions",
+        category: Category::Architecture,
+        severity: Severity::Warning,
+    },
+    // ── Style ───────────────────────────────────────────────────────────
+    LintEntry {
+        name: "dbg_macro",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "todo",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "unimplemented",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "unreachable",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "wildcard_imports",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "missing_errors_doc",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "missing_panics_doc",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "print_stdout",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+    LintEntry {
+        name: "print_stderr",
+        category: Category::Style,
+        severity: Severity::Warning,
+    },
+];
+
+/// Restriction-group lints that must be explicitly enabled via `-W` flags
+/// since they are not covered by `clippy::all`, `pedantic`, `nursery`, or `cargo`.
+const RESTRICTION_LINTS: &[&str] = &[
+    "clippy::unwrap_used",
+    "clippy::expect_used",
+    "clippy::panic",
+    "clippy::indexing_slicing",
+    "clippy::unwrap_in_result",
+    "clippy::panic_in_result_fn",
+    "clippy::exit",
+    "clippy::undocumented_unsafe_blocks",
+    "clippy::multiple_unsafe_ops_per_block",
+    "clippy::mem_forget",
+    "clippy::cognitive_complexity",
+    "clippy::dbg_macro",
+    "clippy::print_stdout",
+    "clippy::print_stderr",
+    "clippy::unimplemented",
+    "clippy::unreachable",
+];
+
+/// Look up a lint in the registry. Returns `(category, severity)` if found.
+fn lookup_lint(lint: &str) -> Option<(Category, Severity)> {
+    let name = lint.strip_prefix("clippy::").unwrap_or(lint);
+    LINT_REGISTRY
+        .iter()
+        .find(|e| e.name == name)
+        .map(|e| (e.category.clone(), e.severity))
+}
+
+/// Map a clippy lint name to a rust-doctor category. Falls back to `Style`.
+fn map_lint_category(lint: &str) -> Category {
+    match lint {
+        "compiler-error" | "compiler-ice" => Category::Correctness,
+        _ => lookup_lint(lint)
+            .map(|(cat, _)| cat)
+            .unwrap_or(Category::Style),
+    }
+}
+
+/// Apply severity override from the registry if the lint is known.
+/// Otherwise, keep clippy's original severity.
+fn resolve_severity(lint: &str, clippy_severity: Severity) -> Severity {
+    match lint {
+        "compiler-error" | "compiler-ice" => Severity::Error,
+        _ => lookup_lint(lint)
+            .map(|(_, sev)| sev)
+            .unwrap_or(clippy_severity),
+    }
+}
+
+/// Return the list of all known lint names (for config validation).
+pub fn known_lint_names() -> Vec<&'static str> {
+    LINT_REGISTRY.iter().map(|e| e.name).collect()
+}
+
+// ---------------------------------------------------------------------------
+// Clippy pass implementation
+// ---------------------------------------------------------------------------
+
 /// Clippy analysis pass — runs `cargo clippy --message-format=json` and
 /// converts the output to rust-doctor diagnostics.
 pub struct ClippyPass;
@@ -23,11 +479,9 @@ impl AnalysisPass for ClippyPass {
     }
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-        // Check if clippy is installed
         if !is_clippy_available() {
             return Err("clippy not found — install with: rustup component add clippy".to_string());
         }
-
         run_clippy(project_root)
     }
 }
@@ -43,29 +497,52 @@ fn is_clippy_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Build the full list of `-W` flags for clippy, including group-level
+/// flags and individual restriction-group lints.
+fn build_clippy_warn_flags() -> Vec<String> {
+    let mut flags = Vec::new();
+
+    // Group-level flags (override #[allow] directives)
+    for group in [
+        "clippy::all",
+        "clippy::pedantic",
+        "clippy::nursery",
+        "clippy::cargo",
+    ] {
+        flags.push("-W".to_string());
+        flags.push(group.to_string());
+    }
+
+    // Individual restriction-group lints
+    for lint in RESTRICTION_LINTS {
+        flags.push("-W".to_string());
+        flags.push((*lint).to_string());
+    }
+
+    flags
+}
+
 /// Run cargo clippy and parse JSON output into diagnostics.
 fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let manifest_path = project_root.join("Cargo.toml");
 
-    let mut child = Command::new("cargo")
-        .args([
-            "clippy",
-            "--message-format=json",
-            "--all-targets",
-            "--manifest-path",
-        ])
-        .arg(&manifest_path)
-        .args([
-            "--",
-            "-W",
-            "clippy::all",
-            "-W",
-            "clippy::pedantic",
-            "-W",
-            "clippy::nursery",
-            "-W",
-            "clippy::cargo",
-        ])
+    let warn_flags = build_clippy_warn_flags();
+
+    let mut cmd = Command::new("cargo");
+    cmd.args([
+        "clippy",
+        "--message-format=json",
+        "--all-targets",
+        "--manifest-path",
+    ])
+    .arg(&manifest_path)
+    .arg("--");
+
+    for flag in &warn_flags {
+        cmd.arg(flag);
+    }
+
+    let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -75,7 +552,6 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         .stdout
         .take()
         .ok_or("failed to capture clippy stdout")?;
-
     let stderr = child.stderr.take();
 
     // Cancellable timeout watchdog
@@ -86,19 +562,15 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let timed_out_watcher = Arc::clone(&timed_out);
 
     let watcher = thread::spawn(move || {
-        // Wait for either cancellation or timeout
         if cancel_rx
             .recv_timeout(Duration::from_secs(CLIPPY_TIMEOUT_SECS))
             .is_err()
+            && let Ok(mut c) = child_watcher.lock()
+            && let Ok(None) = c.try_wait()
         {
-            // Timeout expired (or sender dropped without sending)
-            if let Ok(mut c) = child_watcher.lock()
-                && let Ok(None) = c.try_wait()
-            {
-                let _ = c.kill();
-                if let Ok(mut t) = timed_out_watcher.lock() {
-                    *t = true;
-                }
+            let _ = c.kill();
+            if let Ok(mut t) = timed_out_watcher.lock() {
+                *t = true;
             }
         }
     });
@@ -119,7 +591,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 let diag = &compiler_msg.message;
 
                 // Filter: only process error and warning level messages
-                let severity = match diag.level {
+                let clippy_severity = match diag.level {
                     DiagnosticLevel::Error | DiagnosticLevel::Ice => Severity::Error,
                     DiagnosticLevel::Warning => Severity::Warning,
                     _ => continue,
@@ -129,7 +601,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 let rule = match &diag.code {
                     Some(code) => code.code.clone(),
                     None => {
-                        if severity == Severity::Error {
+                        if clippy_severity == Severity::Error {
                             if diag.level == DiagnosticLevel::Ice {
                                 "compiler-ice".to_string()
                             } else {
@@ -143,7 +615,6 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 
                 // Extract primary span
                 let primary_span = diag.spans.iter().find(|s| s.is_primary);
-
                 let (file_path, line, column) = match primary_span {
                     Some(span) => (
                         PathBuf::from(&span.file_name),
@@ -153,16 +624,17 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                     None => (PathBuf::from("<unknown>"), None, None),
                 };
 
-                // Map category from lint name
+                // Apply registry: category and severity override
                 let category = map_lint_category(&rule);
+                let severity = resolve_severity(&rule, clippy_severity);
 
-                // Extract help: prefer rendered field, fall back to children
-                let help = diag.rendered.clone().or_else(|| {
-                    diag.children
-                        .iter()
-                        .find(|c| c.level == DiagnosticLevel::Help)
-                        .map(|c| c.message.clone())
-                });
+                // Extract help: prefer children help message, fall back to rendered
+                let help = diag
+                    .children
+                    .iter()
+                    .find(|c| c.level == DiagnosticLevel::Help)
+                    .map(|c| c.message.clone())
+                    .or_else(|| diag.rendered.clone());
 
                 diagnostics.push(Diagnostic {
                     file_path,
@@ -227,96 +699,54 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     Ok(diagnostics)
 }
 
-/// Map a clippy lint name to a rust-doctor diagnostic category.
-fn map_lint_category(lint: &str) -> Category {
-    let name = lint.strip_prefix("clippy::").unwrap_or(lint);
-
-    match name {
-        // Error Handling
-        "unwrap_used" | "expect_used" | "panic" | "todo" | "unimplemented" | "unreachable"
-        | "unwrap_in_result" | "panic_in_result_fn" | "indexing_slicing" | "exit"
-        | "result_unit_err" | "option_if_let_else" => Category::ErrorHandling,
-
-        // Performance
-        "clone_on_copy"
-        | "redundant_clone"
-        | "needless_collect"
-        | "large_enum_variant"
-        | "box_collection"
-        | "inefficient_to_string"
-        | "unnecessary_to_owned"
-        | "large_stack_arrays"
-        | "large_futures"
-        | "too_many_arguments"
-        | "unnecessary_wraps"
-        | "useless_vec"
-        | "manual_memcpy"
-        | "naive_bytecount"
-        | "bytes_count_to_usize"
-        | "iter_with_drain"
-        | "extend_with_drain"
-        | "flat_map_option"
-        | "map_flatten"
-        | "manual_retain"
-        | "or_fun_call"
-        | "single_char_pattern"
-        | "format_collect"
-        | "trivially_copy_pass_by_ref" => Category::Performance,
-
-        // Security
-        "transmute_ptr_to_ref"
-        | "cast_ptr_alignment"
-        | "fn_to_numeric_cast"
-        | "string_lit_as_bytes" => Category::Security,
-
-        // Correctness
-        "wrong_self_convention"
-        | "not_unsafe_ptr_arg_deref"
-        | "cast_possible_truncation"
-        | "cast_sign_loss"
-        | "cast_possible_wrap"
-        | "cast_lossless"
-        | "float_cmp"
-        | "float_equality_without_abs"
-        | "eq_op"
-        | "erasing_op"
-        | "bad_bit_mask"
-        | "nonsensical_open_options"
-        | "suspicious_assignment_formatting"
-        | "suspicious_else_formatting"
-        | "mistyped_literal_suffixes"
-        | "match_overlapping_arm"
-        | "invalid_regex" => Category::Correctness,
-
-        // Cargo
-        "multiple_crate_versions"
-        | "wildcard_dependencies"
-        | "negative_feature_names"
-        | "redundant_feature_names"
-        | "cargo_common_metadata" => Category::Cargo,
-
-        // Async
-        "async_yields_async" | "unused_async" => Category::Async,
-
-        // Architecture
-        "module_inception"
-        | "too_many_lines"
-        | "cognitive_complexity"
-        | "type_complexity"
-        | "struct_excessive_bools"
-        | "fn_params_excessive_bools" => Category::Architecture,
-
-        // Compiler errors
-        "compiler-error" | "compiler-ice" => Category::Correctness,
-
-        // Default: fall back to Style
-        _ => Category::Style,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Registry tests ---
+
+    #[test]
+    fn test_registry_has_50_plus_entries() {
+        assert!(
+            LINT_REGISTRY.len() >= 50,
+            "Registry has {} entries, expected 50+",
+            LINT_REGISTRY.len()
+        );
+    }
+
+    #[test]
+    fn test_registry_no_duplicate_names() {
+        let names: Vec<&str> = LINT_REGISTRY.iter().map(|e| e.name).collect();
+        let mut seen = std::collections::HashSet::new();
+        for name in &names {
+            assert!(seen.insert(name), "Duplicate lint name in registry: {name}");
+        }
+    }
+
+    // --- Lookup tests ---
+
+    #[test]
+    fn test_lookup_known_lint() {
+        let result = lookup_lint("clippy::unwrap_used");
+        assert!(result.is_some());
+        let (cat, sev) = result.unwrap();
+        assert_eq!(cat, Category::ErrorHandling);
+        assert_eq!(sev, Severity::Error);
+    }
+
+    #[test]
+    fn test_lookup_without_prefix() {
+        let result = lookup_lint("unwrap_used");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, Category::ErrorHandling);
+    }
+
+    #[test]
+    fn test_lookup_unknown_lint() {
+        assert!(lookup_lint("clippy::some_unknown_lint").is_none());
+    }
+
+    // --- Category mapping tests ---
 
     #[test]
     fn test_map_error_handling() {
@@ -338,7 +768,7 @@ mod tests {
             Category::Performance
         );
         assert_eq!(
-            map_lint_category("clippy::redundant_clone"),
+            map_lint_category("clippy::needless_collect"),
             Category::Performance
         );
     }
@@ -349,12 +779,20 @@ mod tests {
             map_lint_category("clippy::transmute_ptr_to_ref"),
             Category::Security
         );
+        assert_eq!(
+            map_lint_category("clippy::undocumented_unsafe_blocks"),
+            Category::Security
+        );
     }
 
     #[test]
     fn test_map_correctness() {
         assert_eq!(
             map_lint_category("clippy::float_cmp"),
+            Category::Correctness
+        );
+        assert_eq!(
+            map_lint_category("clippy::almost_swapped"),
             Category::Correctness
         );
         assert_eq!(map_lint_category("compiler-error"), Category::Correctness);
@@ -370,11 +808,30 @@ mod tests {
     }
 
     #[test]
+    fn test_map_async() {
+        assert_eq!(
+            map_lint_category("clippy::await_holding_lock"),
+            Category::Async
+        );
+        assert_eq!(map_lint_category("clippy::unused_async"), Category::Async);
+    }
+
+    #[test]
     fn test_map_architecture() {
         assert_eq!(
             map_lint_category("clippy::cognitive_complexity"),
             Category::Architecture
         );
+        assert_eq!(
+            map_lint_category("clippy::too_many_arguments"),
+            Category::Architecture
+        );
+    }
+
+    #[test]
+    fn test_map_style() {
+        assert_eq!(map_lint_category("clippy::dbg_macro"), Category::Style);
+        assert_eq!(map_lint_category("clippy::todo"), Category::Style);
     }
 
     #[test]
@@ -383,14 +840,72 @@ mod tests {
             map_lint_category("clippy::some_unknown_lint"),
             Category::Style
         );
-        assert_eq!(map_lint_category("unknown_lint"), Category::Style);
+    }
+
+    // --- Severity override tests ---
+
+    #[test]
+    fn test_severity_override_promotes_warning_to_error() {
+        // clippy reports unwrap_used as warning, but our registry says Error
+        let sev = resolve_severity("clippy::unwrap_used", Severity::Warning);
+        assert_eq!(sev, Severity::Error);
     }
 
     #[test]
-    fn test_map_without_prefix() {
-        assert_eq!(map_lint_category("unwrap_used"), Category::ErrorHandling);
-        assert_eq!(map_lint_category("clone_on_copy"), Category::Performance);
+    fn test_severity_override_keeps_registered_warning() {
+        // clone_on_copy is registered as Warning
+        let sev = resolve_severity("clippy::clone_on_copy", Severity::Warning);
+        assert_eq!(sev, Severity::Warning);
     }
+
+    #[test]
+    fn test_severity_unknown_lint_keeps_clippy_default() {
+        let sev = resolve_severity("clippy::some_unknown_lint", Severity::Warning);
+        assert_eq!(sev, Severity::Warning);
+    }
+
+    #[test]
+    fn test_severity_compiler_error_always_error() {
+        assert_eq!(
+            resolve_severity("compiler-error", Severity::Warning),
+            Severity::Error
+        );
+        assert_eq!(
+            resolve_severity("compiler-ice", Severity::Warning),
+            Severity::Error
+        );
+    }
+
+    // --- Known lint names ---
+
+    #[test]
+    fn test_known_lint_names_count() {
+        let names = known_lint_names();
+        assert!(names.len() >= 50);
+        assert!(names.contains(&"unwrap_used"));
+        assert!(names.contains(&"await_holding_lock"));
+    }
+
+    // --- Restriction flags ---
+
+    #[test]
+    fn test_build_clippy_warn_flags_contains_groups() {
+        let flags = build_clippy_warn_flags();
+        assert!(flags.contains(&"clippy::all".to_string()));
+        assert!(flags.contains(&"clippy::pedantic".to_string()));
+        assert!(flags.contains(&"clippy::nursery".to_string()));
+        assert!(flags.contains(&"clippy::cargo".to_string()));
+    }
+
+    #[test]
+    fn test_build_clippy_warn_flags_contains_restriction_lints() {
+        let flags = build_clippy_warn_flags();
+        assert!(flags.contains(&"clippy::unwrap_used".to_string()));
+        assert!(flags.contains(&"clippy::expect_used".to_string()));
+        assert!(flags.contains(&"clippy::dbg_macro".to_string()));
+    }
+
+    // --- Integration ---
 
     #[test]
     fn test_clippy_is_available() {
@@ -402,5 +917,16 @@ mod tests {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let result = run_clippy(manifest_dir);
         assert!(result.is_ok(), "clippy failed: {:?}", result.err());
+        // Verify that diagnostics from registered lints get severity overrides
+        let diags = result.unwrap();
+        for d in &diags {
+            if let Some((_, expected_sev)) = lookup_lint(&d.rule) {
+                assert_eq!(
+                    d.severity, expected_sev,
+                    "Lint {} should have severity {:?} but got {:?}",
+                    d.rule, expected_sev, d.severity
+                );
+            }
+        }
     }
 }
