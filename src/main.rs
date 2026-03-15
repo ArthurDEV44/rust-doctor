@@ -1,4 +1,5 @@
 mod cli;
+mod clippy;
 mod config;
 mod diagnostics;
 mod discovery;
@@ -93,7 +94,7 @@ fn main() {
 
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
-        Box::new(scanner::ClippyPass),
+        Box::new(clippy::ClippyPass),
         Box::new(scanner::CustomRulesPass),
         Box::new(scanner::DependencyPass),
     ];

@@ -213,14 +213,14 @@ Integrate cargo clippy as the primary linting backend.
 **As a** rust-doctor scanner, **I want to** run cargo clippy and convert its output to rust-doctor diagnostics **so that** all 700+ clippy lints are available.
 
 **Acceptance Criteria:**
-- [ ] Spawn `cargo clippy --message-format=json --all-targets --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo` as subprocess
-- [ ] Parse each JSON line with `reason: "compiler-message"`, extract `message.code.code`, `message.level`, `message.message`, `message.spans[0]` (file, line, column)
-- [ ] Map clippy lint names to rust-doctor categories: `clippy::unwrap_used` → Error Handling, `clippy::clone_on_copy` → Performance, etc.
-- [ ] Map clippy severity: `"warning"` → Warning, `"error"` → Error. Filter out `"note"` and `"help"` level messages
-- [ ] Capture clippy's `rendered` field for verbose output
-- [ ] Timeout: kill clippy process after 120 seconds, report partial results
-- [ ] Error: if clippy is not installed, print "clippy not found — install with: rustup component add clippy" and skip this pass (do not fail entire scan)
-- [ ] Error: if project doesn't compile, capture compiler errors and report them as diagnostics with severity Error
+- [x] Spawn `cargo clippy --message-format=json --all-targets --all-features -- -W clippy::all -W clippy::pedantic -W clippy::nursery -W clippy::cargo` as subprocess
+- [x] Parse each JSON line with `reason: "compiler-message"`, extract `message.code.code`, `message.level`, `message.message`, `message.spans[0]` (file, line, column)
+- [x] Map clippy lint names to rust-doctor categories: `clippy::unwrap_used` → Error Handling, `clippy::clone_on_copy` → Performance, etc.
+- [x] Map clippy severity: `"warning"` → Warning, `"error"` → Error. Filter out `"note"` and `"help"` level messages
+- [x] Capture clippy's `rendered` field for verbose output
+- [x] Timeout: kill clippy process after 120 seconds, report partial results
+- [x] Error: if clippy is not installed, print "clippy not found — install with: rustup component add clippy" and skip this pass (do not fail entire scan)
+- [x] Error: if project doesn't compile, capture compiler errors and report them as diagnostics with severity Error
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-004
 

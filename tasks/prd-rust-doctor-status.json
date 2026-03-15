@@ -17,10 +17,10 @@
     {
       "id": "EP-002",
       "title": "Clippy Analysis Pass",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P0",
       "stories_total": 2,
-      "stories_done": 0
+      "stories_done": 1
     },
     {
       "id": "EP-003",
@@ -128,13 +128,13 @@
       "id": "US-006",
       "title": "Run clippy and parse JSON output into diagnostics",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-15",
+      "completed_at": "2026-03-15",
+      "reviewed_at": "2026-03-15"
     },
     {
       "id": "US-007",

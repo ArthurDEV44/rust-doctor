@@ -217,8 +217,9 @@ fn count_rs_files_recursive(dir: &Path) -> usize {
         };
         if meta.is_dir() {
             let name = path.file_name().unwrap_or_default().to_string_lossy();
-            // Skip hidden dirs, target, and common non-source dirs
-            if !name.starts_with('.') && name != "target" {
+            // Skip hidden dirs, target, vendor, generated, and common non-source dirs
+            if !name.starts_with('.') && name != "target" && name != "vendor" && name != "generated"
+            {
                 count += count_rs_files_recursive(&path);
             }
         } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
@@ -229,21 +230,7 @@ fn count_rs_files_recursive(dir: &Path) -> usize {
     count
 }
 
-// --- Placeholder passes (will be replaced by US-006, US-008, US-012) ---
-
-/// Placeholder clippy analysis pass.
-pub struct ClippyPass;
-
-impl AnalysisPass for ClippyPass {
-    fn name(&self) -> &str {
-        "clippy"
-    }
-
-    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-        // Placeholder — real implementation in US-006
-        Ok(vec![])
-    }
-}
+// --- Placeholder passes (will be replaced by US-008, US-012) ---
 
 /// Placeholder custom AST rules pass.
 pub struct CustomRulesPass;
