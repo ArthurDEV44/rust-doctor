@@ -1,4 +1,5 @@
 pub mod error_handling;
+pub mod performance;
 
 use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::scanner::AnalysisPass;

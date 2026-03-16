@@ -286,13 +286,13 @@ Rules that go beyond clippy: patterns specific to rust-doctor's opinionated anal
 **As a** developer, **I want** rust-doctor to catch performance anti-patterns **so that** I avoid unnecessary allocations and copies.
 
 **Rules implemented:**
-- [ ] `excessive-clone`: Flag `.clone()` on types that implement `Copy` — severity: Warning
-- [ ] `string-from-literal`: Flag `String::from("literal")` or `"literal".to_string()` where `&str` could be used (in function args accepting `impl AsRef<str>`) — severity: Warning
-- [ ] `collect-then-iterate`: Flag `.collect::<Vec<_>>()` immediately followed by `.iter()` or `.into_iter()` — severity: Warning
-- [ ] `large-enum-variant`: Flag enums where the largest variant is >3x the size of the smallest (heuristic: count fields) — severity: Warning
-- [ ] `unnecessary-allocation`: Flag `Vec::new()` in loops without pre-allocation hint — severity: Warning
-- [ ] Each rule includes help text with the recommended fix pattern
-- [ ] Error: rule triggers on code inside a macro expansion — accepted as known limitation
+- [x] `excessive-clone`: Flag `.clone()` on types that implement `Copy` — severity: Warning
+- [x] `string-from-literal`: Flag `String::from("literal")` or `"literal".to_string()` where `&str` could be used (in function args accepting `impl AsRef<str>`) — severity: Warning
+- [x] `collect-then-iterate`: Flag `.collect::<Vec<_>>()` immediately followed by `.iter()` or `.into_iter()` — severity: Warning
+- [x] `large-enum-variant`: Flag enums where the largest variant is >3x the size of the smallest (heuristic: count fields) — severity: Warning
+- [x] `unnecessary-allocation`: Flag `Vec::new()` in loops without pre-allocation hint — severity: Warning
+- [x] Each rule includes help text with the recommended fix pattern
+- [x] Error: rule triggers on code inside a macro expansion — accepted as known limitation
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-008
 

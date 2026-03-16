@@ -99,6 +99,9 @@ fn main() {
     // Error handling rules (US-009)
     custom_rules.extend(rules::error_handling::all_rules());
 
+    // Performance rules (US-010)
+    custom_rules.extend(rules::performance::all_rules());
+
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),
