@@ -1,3 +1,4 @@
+mod audit;
 mod cli;
 mod clippy;
 mod config;
@@ -112,7 +113,7 @@ fn main() {
             custom_rules,
             resolved.ignore_files.clone(),
         )),
-        Box::new(scanner::DependencyPass),
+        Box::new(audit::AuditPass),
     ];
 
     // Run scan orchestrator

@@ -325,13 +325,13 @@ Assess dependency health via external tools.
 **As a** developer, **I want** rust-doctor to check my dependencies for known vulnerabilities **so that** I don't ship code with known CVEs.
 
 **Acceptance Criteria:**
-- [ ] Detect if `cargo-audit` is installed via `which` crate
-- [ ] If installed: spawn `cargo audit --json` and parse output
-- [ ] Map each advisory to a rust-doctor diagnostic: advisory ID, affected crate, severity (CVSS-based: critical/high → Error, medium/low → Warning), description
-- [ ] Include help text with advisory URL and fix suggestion ("upgrade {crate} to {patched_version}")
-- [ ] If not installed: print info message "Install cargo-audit for vulnerability scanning: cargo install cargo-audit" and skip this pass (zero diagnostics, no score penalty)
-- [ ] Timeout: 60 seconds for cargo-audit subprocess
-- [ ] Error: cargo-audit exits with non-zero for reasons other than advisories (e.g., no Cargo.lock) — log warning, skip pass
+- [x] Detect if `cargo-audit` is installed via `which` crate
+- [x] If installed: spawn `cargo audit --json` and parse output
+- [x] Map each advisory to a rust-doctor diagnostic: advisory ID, affected crate, severity (CVSS-based: critical/high → Error, medium/low → Warning), description
+- [x] Include help text with advisory URL and fix suggestion ("upgrade {crate} to {patched_version}")
+- [x] If not installed: print info message "Install cargo-audit for vulnerability scanning: cargo install cargo-audit" and skip this pass (zero diagnostics, no score penalty)
+- [x] Timeout: 60 seconds for cargo-audit subprocess
+- [x] Error: cargo-audit exits with non-zero for reasons other than advisories (e.g., no Cargo.lock) — log warning, skip pass
 
 **Priority:** P1 | **Size:** S (2 pts) | **Blocked by:** US-004
 

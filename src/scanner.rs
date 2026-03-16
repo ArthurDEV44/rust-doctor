@@ -230,22 +230,6 @@ fn count_rs_files_recursive(dir: &Path) -> usize {
     count
 }
 
-// --- Placeholder passes (will be replaced by US-012) ---
-
-/// Placeholder dependency analysis pass.
-pub struct DependencyPass;
-
-impl AnalysisPass for DependencyPass {
-    fn name(&self) -> &str {
-        "dependencies"
-    }
-
-    fn run(&self, _project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-        // Placeholder — real implementation in US-012/US-013
-        Ok(vec![])
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
