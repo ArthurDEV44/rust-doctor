@@ -303,12 +303,12 @@ Rules that go beyond clippy: patterns specific to rust-doctor's opinionated anal
 **As a** developer, **I want** rust-doctor to catch security issues in my code **so that** I don't ship vulnerable software.
 
 **Rules implemented:**
-- [ ] `hardcoded-secrets`: Flag string literals assigned to variables matching `/(?i)(api_?key|secret|token|password|credential|auth_?token)/` with value length >8 — severity: Error
-- [ ] `unsafe-block-audit`: Count and report all `unsafe` blocks with file:line, categorize by type (raw pointer deref, FFI call, mutable static access, union field access) — severity: Warning
-- [ ] `sql-injection-risk`: Flag string formatting (`format!()`) used inside `.query()`, `.execute()`, or similar database method calls (sqlx, diesel, sea-orm patterns) — severity: Error
-- [ ] `hardcoded-secrets` has an allowlist of non-secret suffixes: `_url`, `_path`, `_name`, `_type`, `_label`, `_mode`, `_format`, `_version`, `_prefix`, `_suffix`
-- [ ] `unsafe-block-audit` respects `#![forbid(unsafe_code)]` — if present, report zero unsafe blocks instead of scanning
-- [ ] Error: `hardcoded-secrets` false positive on test fixtures — accepted, suppressible via `// rust-doctor-disable-next-line`
+- [x] `hardcoded-secrets`: Flag string literals assigned to variables matching `/(?i)(api_?key|secret|token|password|credential|auth_?token)/` with value length >8 — severity: Error
+- [x] `unsafe-block-audit`: Count and report all `unsafe` blocks with file:line, categorize by type (raw pointer deref, FFI call, mutable static access, union field access) — severity: Warning
+- [x] `sql-injection-risk`: Flag string formatting (`format!()`) used inside `.query()`, `.execute()`, or similar database method calls (sqlx, diesel, sea-orm patterns) — severity: Error
+- [x] `hardcoded-secrets` has an allowlist of non-secret suffixes: `_url`, `_path`, `_name`, `_type`, `_label`, `_mode`, `_format`, `_version`, `_prefix`, `_suffix`
+- [x] `unsafe-block-audit` respects `#![forbid(unsafe_code)]` — if present, report zero unsafe blocks instead of scanning
+- [x] Error: `hardcoded-secrets` false positive on test fixtures — accepted, suppressible via `// rust-doctor-disable-next-line`
 
 **Priority:** P0 | **Size:** M (3 pts) | **Blocked by:** US-008
 

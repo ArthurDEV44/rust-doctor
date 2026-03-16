@@ -102,6 +102,9 @@ fn main() {
     // Performance rules (US-010)
     custom_rules.extend(rules::performance::all_rules());
 
+    // Security rules (US-011)
+    custom_rules.extend(rules::security::all_rules());
+
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),
