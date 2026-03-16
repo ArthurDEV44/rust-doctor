@@ -57,10 +57,10 @@
     {
       "id": "EP-007",
       "title": "CI/CD & Distribution",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P2",
       "stories_total": 2,
-      "stories_done": 0
+      "stories_done": 1
     }
   ],
   "stories": [
@@ -284,13 +284,13 @@
       "id": "US-019",
       "title": "GitHub Actions composite action",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "M",
       "blocked_by": ["US-005", "US-016"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     },
     {
       "id": "US-020",

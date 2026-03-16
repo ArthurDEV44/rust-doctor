@@ -469,14 +469,14 @@ GitHub Actions integration and binary distribution.
 **As a** team lead, **I want to** add rust-doctor to my CI pipeline **so that** PRs get a health score comment automatically.
 
 **Acceptance Criteria:**
-- [ ] `action.yml` at repo root defines a composite GitHub Action
-- [ ] Inputs: `directory` (default `.`), `fail-on` (default `none`), `token` (for PR comments), `diff` (default `true`)
-- [ ] Action installs rust-doctor via `cargo-binstall` (pre-built binary, fast) or falls back to `cargo install`
-- [ ] Runs `rust-doctor {directory} --json --diff --fail-on {fail-on}` and captures output
-- [ ] If `token` provided and running on a PR: post/update a PR comment with formatted score, error/warning counts, and top 5 diagnostics
-- [ ] Outputs: `score` (integer), `errors` (integer), `warnings` (integer)
-- [ ] Exit code matches `--fail-on` behavior
-- [ ] Error: token not provided on PR → skip comment posting, still output score
+- [x] `action.yml` at repo root defines a composite GitHub Action
+- [x] Inputs: `directory` (default `.`), `fail-on` (default `none`), `token` (for PR comments), `diff` (default `true`)
+- [x] Action installs rust-doctor via `cargo-binstall` (pre-built binary, fast) or falls back to `cargo install`
+- [x] Runs `rust-doctor {directory} --json --diff --fail-on {fail-on}` and captures output
+- [x] If `token` provided and running on a PR: post/update a PR comment with formatted score, error/warning counts, and top 5 diagnostics
+- [x] Outputs: `score` (integer), `errors` (integer), `warnings` (integer)
+- [x] Exit code matches `--fail-on` behavior
+- [x] Error: token not provided on PR → skip comment posting, still output score
 
 **Priority:** P2 | **Size:** M (3 pts) | **Blocked by:** US-005, US-016
 
