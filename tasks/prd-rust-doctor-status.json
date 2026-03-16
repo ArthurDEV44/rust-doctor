@@ -52,7 +52,7 @@
       "status": "IN_PROGRESS",
       "priority": "P1",
       "stories_total": 3,
-      "stories_done": 1
+      "stories_done": 2
     },
     {
       "id": "EP-007",
@@ -260,13 +260,13 @@
       "id": "US-017",
       "title": "Cargo workspace multi-crate scanning",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": ["US-002", "US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     },
     {
       "id": "US-018",

@@ -90,6 +90,17 @@ pub struct ProjectInfo {
     pub is_no_std: bool,
     /// The `[package.metadata]` table from Cargo.toml (for config fallback).
     pub package_metadata: serde_json::Value,
+    /// Workspace member names and their root directories.
+    pub workspace_members: Vec<WorkspaceMember>,
+}
+
+/// A workspace member package.
+#[derive(Debug, Clone)]
+pub struct WorkspaceMember {
+    /// Package name.
+    pub name: String,
+    /// Absolute path to the member's root directory (parent of Cargo.toml).
+    pub root_dir: PathBuf,
 }
 
 /// Run cargo metadata and discover project characteristics.
@@ -144,6 +155,20 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
 
     let package_metadata = primary.metadata.clone();
 
+    // Collect workspace member info
+    let workspace_members_info: Vec<WorkspaceMember> = members
+        .iter()
+        .map(|pkg| WorkspaceMember {
+            name: pkg.name.clone(),
+            root_dir: PathBuf::from(
+                pkg.manifest_path
+                    .parent()
+                    .map(|p| p.as_std_path())
+                    .unwrap_or(workspace_root.as_path()),
+            ),
+        })
+        .collect();
+
     Ok(ProjectInfo {
         root_dir: workspace_root,
         name,
@@ -156,6 +181,7 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
         rust_version,
         is_no_std,
         package_metadata,
+        workspace_members: workspace_members_info,
     })
 }
 

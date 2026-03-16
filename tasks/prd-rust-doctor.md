@@ -425,15 +425,15 @@ Diff mode, workspace support, and inline suppression.
 **As a** developer with a Cargo workspace, **I want to** scan all crates or select specific ones **so that** I get a workspace-wide health view.
 
 **Acceptance Criteria:**
-- [ ] Auto-detect workspace from `cargo metadata` → `workspace_members` with >1 member
-- [ ] Default behavior: scan all workspace members
-- [ ] `--project <name1,name2>` flag: scan only specified workspace members
-- [ ] `-y` flag: skip interactive member selection prompt
-- [ ] Interactive mode (no `-y`, terminal is TTY): prompt user to select which members to scan
-- [ ] Each member scanned independently, results merged into single output
-- [ ] Score is calculated from combined diagnostics across all scanned members
-- [ ] Output shows per-member diagnostic count breakdown in summary
-- [ ] Error: `--project` specifies non-existent member → print available members and exit
+- [x] Auto-detect workspace from `cargo metadata` → `workspace_members` with >1 member
+- [x] Default behavior: scan all workspace members
+- [x] `--project <name1,name2>` flag: scan only specified workspace members
+- [x] `-y` flag: skip interactive member selection prompt
+- [ ] Interactive mode (no `-y`, terminal is TTY): prompt user to select which members to scan (deferred — requires TUI picker)
+- [x] Each member scanned independently, results merged into single output
+- [x] Score is calculated from combined diagnostics across all scanned members
+- [x] Output shows per-member diagnostic count breakdown in summary
+- [x] Error: `--project` specifies non-existent member → print available members and exit
 
 **Priority:** P1 | **Size:** M (3 pts) | **Blocked by:** US-002, US-004
 
