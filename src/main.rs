@@ -3,6 +3,7 @@ mod cli;
 mod clippy;
 mod config;
 mod diagnostics;
+mod diff;
 mod discovery;
 mod machete;
 mod output;
@@ -65,6 +66,27 @@ fn main() {
     let known_rules = clippy::known_lint_names();
     config::validate_ignored_rules(&resolved.ignore_rules, &known_rules);
 
+    // Resolve diff mode (US-016)
+    let diff_context = resolved.diff.as_ref().and_then(|base_hint| {
+        match diff::resolve_diff(&project_info.root_dir, base_hint) {
+            Ok(ctx) => Some(ctx),
+            Err(e) => {
+                eprintln!("Warning: {e}");
+                None
+            }
+        }
+    });
+
+    let is_diff_mode = diff_context.is_some();
+
+    if let Some(ref ctx) = diff_context {
+        eprintln!(
+            "Diff mode: scanning {} changed file(s) vs {}",
+            ctx.changed_files.len(),
+            ctx.base,
+        );
+    }
+
     if resolved.verbose {
         eprintln!(
             "Project: {} v{} (edition {})",
@@ -93,7 +115,11 @@ fn main() {
     }
 
     // Count source files
-    let source_file_count = scanner::count_source_files(&project_info.root_dir);
+    let source_file_count = if let Some(ref ctx) = diff_context {
+        ctx.changed_files.len()
+    } else {
+        scanner::count_source_files(&project_info.root_dir)
+    };
 
     // Build custom rules based on detected project characteristics
     let mut custom_rules: Vec<Box<dyn rules::CustomRule>> = Vec::new();
@@ -125,26 +151,48 @@ fn main() {
         &project_info.frameworks,
     ));
 
-    // Build analysis passes
-    let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
+    // Build analysis passes — skip dependency passes in diff mode
+    let mut passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),
         Box::new(rules::RuleEnginePass::new(
             custom_rules,
             resolved.ignore_files.clone(),
         )),
-        Box::new(audit::AuditPass),
-        Box::new(machete::MachetePass),
     ];
+    if !is_diff_mode {
+        passes.push(Box::new(audit::AuditPass));
+        passes.push(Box::new(machete::MachetePass));
+    }
 
     // Run scan orchestrator
     let suppress_spinner = cli.score || cli.json;
     let orchestrator = scanner::ScanOrchestrator::new(passes);
-    let scan_result = orchestrator.run(
+    let mut scan_result = orchestrator.run(
         &project_info.root_dir,
         &resolved,
         source_file_count,
         suppress_spinner,
     );
+
+    // In diff mode, filter diagnostics to changed files only
+    if let Some(ref ctx) = diff_context {
+        scan_result.diagnostics =
+            diff::filter_to_changed_files(scan_result.diagnostics, &ctx.changed_files);
+        // Recalculate counts and score after filtering
+        scan_result.error_count = scan_result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == diagnostics::Severity::Error)
+            .count();
+        scan_result.warning_count = scan_result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == diagnostics::Severity::Warning)
+            .count();
+        let (score, label) = output::calculate_score(&scan_result.diagnostics);
+        scan_result.score = score;
+        scan_result.score_label = label;
+    }
 
     // Output results based on mode
     if cli.score {

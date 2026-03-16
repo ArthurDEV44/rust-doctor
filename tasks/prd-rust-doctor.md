@@ -406,15 +406,15 @@ Diff mode, workspace support, and inline suppression.
 **As a** developer on a feature branch, **I want to** scan only the files I changed **so that** I get fast feedback on my work.
 
 **Acceptance Criteria:**
-- [ ] `--diff` flag with optional base branch argument (default: auto-detect via `git merge-base HEAD main` then `master`)
-- [ ] Use `git diff --name-only {base}...HEAD` to get list of changed `.rs` files
-- [ ] Filter all analysis passes to only process changed files
-- [ ] Clippy pass: use `--` with file list or filter JSON output post-hoc
-- [ ] Dependency analysis is skipped in diff mode (requires full project context)
-- [ ] Score is calculated only from diagnostics in changed files
-- [ ] Output shows "Diff mode: scanning N changed files vs {base}" header
-- [ ] Error: not a git repository → print "Diff mode requires a git repository" and fall back to full scan
-- [ ] Error: base branch doesn't exist → print error with suggestion to specify base with `--diff <branch>`
+- [x] `--diff` flag with optional base branch argument (default: auto-detect via `git merge-base HEAD main` then `master`)
+- [x] Use `git diff --name-only {base}...HEAD` to get list of changed `.rs` files
+- [x] Filter all analysis passes to only process changed files
+- [x] Clippy pass: use `--` with file list or filter JSON output post-hoc
+- [x] Dependency analysis is skipped in diff mode (requires full project context)
+- [x] Score is calculated only from diagnostics in changed files
+- [x] Output shows "Diff mode: scanning N changed files vs {base}" header
+- [x] Error: not a git repository → print "Diff mode requires a git repository" and fall back to full scan
+- [x] Error: base branch doesn't exist → print error with suggestion to specify base with `--diff <branch>`
 
 **Priority:** P1 | **Size:** M (3 pts) | **Blocked by:** US-004
 
