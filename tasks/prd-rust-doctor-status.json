@@ -3,7 +3,7 @@
     "file": "tasks/prd-rust-doctor.md",
     "title": "rust-doctor",
     "created_at": "2026-03-15",
-    "status": "IN_PROGRESS"
+    "status": "DONE"
   },
   "epics": [
     {
@@ -57,10 +57,10 @@
     {
       "id": "EP-007",
       "title": "CI/CD & Distribution",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "priority": "P2",
       "stories_total": 2,
-      "stories_done": 1
+      "stories_done": 2
     }
   ],
   "stories": [
@@ -296,13 +296,13 @@
       "id": "US-020",
       "title": "crates.io publishing and cargo-dist binary distribution",
       "epic": "EP-007",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P2",
       "size": "S",
       "blocked_by": ["US-001"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     }
   ]
 }

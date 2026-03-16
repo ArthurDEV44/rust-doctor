@@ -487,14 +487,14 @@ GitHub Actions integration and binary distribution.
 **As a** developer, **I want to** install rust-doctor via `cargo install` or download a pre-built binary **so that** setup is fast.
 
 **Acceptance Criteria:**
-- [ ] Cargo.toml has all required crates.io metadata: description, license (MIT OR Apache-2.0), repository, readme, keywords, categories
-- [ ] `cargo publish --dry-run` succeeds with no errors
-- [ ] cargo-dist initialized: `.github/workflows/release.yml` generated for tag-triggered releases
-- [ ] Release workflow builds binaries for: x86_64-linux, aarch64-linux, x86_64-macos, aarch64-macos, x86_64-windows
-- [ ] Release artifacts include shell installer script and powershell installer
-- [ ] `cargo binstall rust-doctor` works (downloads pre-built binary from GitHub Releases)
-- [ ] README.md documents installation methods: `cargo install`, `cargo binstall`, GitHub Releases, GitHub Actions
-- [ ] Error: `cargo publish` fails due to missing field → CI catches this in dry-run step
+- [x] Cargo.toml has all required crates.io metadata: description, license (MIT OR Apache-2.0), repository, readme, keywords, categories
+- [x] `cargo publish --dry-run` succeeds with no errors
+- [x] cargo-dist initialized: `.github/workflows/release.yml` generated for tag-triggered releases
+- [x] Release workflow builds binaries for: x86_64-linux, aarch64-linux, x86_64-macos, aarch64-macos, x86_64-windows
+- [x] Release artifacts include shell installer script and powershell installer
+- [x] `cargo binstall rust-doctor` works (downloads pre-built binary from GitHub Releases)
+- [x] README.md documents installation methods: `cargo install`, `cargo binstall`, GitHub Releases, GitHub Actions
+- [x] Error: `cargo publish` fails due to missing field → CI catches this in dry-run step
 
 **Priority:** P2 | **Size:** S (2 pts) | **Blocked by:** US-001
 
