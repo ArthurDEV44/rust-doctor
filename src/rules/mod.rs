@@ -1,3 +1,4 @@
+pub mod async_rules;
 pub mod error_handling;
 pub mod performance;
 pub mod security;

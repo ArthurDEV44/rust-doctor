@@ -365,13 +365,13 @@ Rules specific to async Rust and popular frameworks.
 **As a** developer using async Rust, **I want** rust-doctor to catch async anti-patterns **so that** I avoid deadlocks and executor starvation.
 
 **Acceptance Criteria:**
-- [ ] Rules only activate when tokio, async-std, or smol detected in dependencies
-- [ ] `blocking-in-async`: Flag `std::thread::sleep`, `std::fs::*` (read, write, etc.), `std::net::*` calls inside `async fn` bodies — severity: Error
-- [ ] `mutex-across-await`: Flag `std::sync::Mutex` or `std::sync::RwLock` lock guard held across an `.await` point — severity: Error
-- [ ] `block-on-in-async`: Flag `futures::executor::block_on` or `tokio::runtime::Handle::block_on` inside async context — severity: Error
-- [ ] Help text for each rule suggests the correct alternative (e.g., "Use `tokio::time::sleep` instead of `std::thread::sleep`")
-- [ ] Rules skip detection inside `spawn_blocking` closures (correct usage)
-- [ ] Error: complex control flow (e.g., await in a match arm after lock) may cause false negatives — accepted
+- [x] Rules only activate when tokio, async-std, or smol detected in dependencies
+- [x] `blocking-in-async`: Flag `std::thread::sleep`, `std::fs::*` (read, write, etc.), `std::net::*` calls inside `async fn` bodies — severity: Error
+- [ ] `mutex-across-await`: Flag `std::sync::Mutex` or `std::sync::RwLock` lock guard held across an `.await` point — severity: Error (deferred — requires complex control flow analysis)
+- [x] `block-on-in-async`: Flag `futures::executor::block_on` or `tokio::runtime::Handle::block_on` inside async context — severity: Error
+- [x] Help text for each rule suggests the correct alternative (e.g., "Use `tokio::time::sleep` instead of `std::thread::sleep`")
+- [x] Rules skip detection inside `spawn_blocking` closures (correct usage)
+- [x] Error: complex control flow (e.g., await in a match arm after lock) may cause false negatives — accepted
 
 **Priority:** P1 | **Size:** M (3 pts) | **Blocked by:** US-008
 

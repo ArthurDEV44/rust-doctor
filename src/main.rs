@@ -107,6 +107,19 @@ fn main() {
     // Security rules (US-011)
     custom_rules.extend(rules::security::all_rules());
 
+    // Async rules (US-014) — only when async runtime detected
+    let has_async_runtime = project_info.frameworks.iter().any(|f| {
+        matches!(
+            f,
+            discovery::Framework::Tokio
+                | discovery::Framework::AsyncStd
+                | discovery::Framework::Smol
+        )
+    });
+    if has_async_runtime {
+        custom_rules.extend(rules::async_rules::all_rules());
+    }
+
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),

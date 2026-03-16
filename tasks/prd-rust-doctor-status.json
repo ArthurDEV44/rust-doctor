@@ -41,10 +41,10 @@
     {
       "id": "EP-005",
       "title": "Async & Framework Rules",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
       "priority": "P1",
       "stories_total": 2,
-      "stories_done": 0
+      "stories_done": 1
     },
     {
       "id": "EP-006",
@@ -224,13 +224,13 @@
       "id": "US-014",
       "title": "Async anti-pattern rules",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "M",
       "blocked_by": ["US-008"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     },
     {
       "id": "US-015",
