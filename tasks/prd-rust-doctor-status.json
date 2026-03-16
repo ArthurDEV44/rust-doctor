@@ -49,10 +49,10 @@
     {
       "id": "EP-006",
       "title": "Advanced Modes",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 3,
-      "stories_done": 2
+      "stories_done": 3
     },
     {
       "id": "EP-007",
@@ -272,13 +272,13 @@
       "id": "US-018",
       "title": "Inline suppression and diagnostic filtering",
       "epic": "EP-006",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     },
     {
       "id": "US-019",

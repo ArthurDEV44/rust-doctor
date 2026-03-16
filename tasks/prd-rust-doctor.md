@@ -444,15 +444,15 @@ Diff mode, workspace support, and inline suppression.
 **As a** developer, **I want to** suppress specific warnings with inline comments **so that** I can acknowledge known issues without losing the overall score benefit.
 
 **Acceptance Criteria:**
-- [ ] `// rust-doctor-disable-next-line <rule-name>` suppresses the diagnostic on the next line
-- [ ] `// rust-doctor-disable-line` suppresses all diagnostics on the current line
-- [ ] `// rust-doctor-disable-next-line` (no rule name) suppresses ALL diagnostics on the next line
-- [ ] Suppression parsing happens post-analysis: read source files, find suppression comments, filter matching diagnostics
-- [ ] Config `ignore.rules` filters diagnostics by rule name globally
-- [ ] Config `ignore.files` filters diagnostics by file path glob pattern
-- [ ] Filtered diagnostics are excluded from score calculation
-- [ ] `--verbose` mode shows count of suppressed diagnostics at the end
-- [ ] Error: suppression comment references non-existent rule → print warning with valid rule names
+- [x] `// rust-doctor-disable-next-line <rule-name>` suppresses the diagnostic on the next line
+- [x] `// rust-doctor-disable-line` suppresses all diagnostics on the current line
+- [x] `// rust-doctor-disable-next-line` (no rule name) suppresses ALL diagnostics on the next line
+- [x] Suppression parsing happens post-analysis: read source files, find suppression comments, filter matching diagnostics
+- [x] Config `ignore.rules` filters diagnostics by rule name globally
+- [x] Config `ignore.files` filters diagnostics by file path glob pattern
+- [x] Filtered diagnostics are excluded from score calculation
+- [x] `--verbose` mode shows count of suppressed diagnostics at the end
+- [ ] Error: suppression comment references non-existent rule → print warning with valid rule names (deferred)
 
 **Priority:** P1 | **Size:** S (2 pts) | **Blocked by:** US-004
 

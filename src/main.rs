@@ -9,6 +9,7 @@ mod machete;
 mod output;
 mod rules;
 mod scanner;
+mod suppression;
 mod workspace;
 
 use clap::Parser;
@@ -205,6 +206,13 @@ fn main() {
     // In diff mode, filter to changed files
     if let Some(ref ctx) = diff_context {
         all_diagnostics = diff::filter_to_changed_files(all_diagnostics, &ctx.changed_files);
+    }
+
+    // Apply inline suppression comments (US-018)
+    let (all_diagnostics, suppressed_count) =
+        suppression::apply_inline_suppressions(all_diagnostics, &project_info.root_dir);
+    if resolved.verbose && suppressed_count > 0 {
+        eprintln!("Suppressed {suppressed_count} diagnostic(s) via inline comments");
     }
 
     // Calculate final score
