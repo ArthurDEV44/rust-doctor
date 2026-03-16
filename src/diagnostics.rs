@@ -22,7 +22,6 @@ impl std::fmt::Display for Severity {
 /// Category of a diagnostic rule.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[allow(dead_code)] // Variants used as rules are implemented (US-006+)
 pub enum Category {
     ErrorHandling,
     Performance,

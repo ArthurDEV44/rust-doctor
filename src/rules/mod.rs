@@ -14,15 +14,16 @@ use std::path::{Path, PathBuf};
 /// Trait for custom AST-based rules that clippy doesn't cover.
 ///
 /// Rules must be `Send + Sync` for parallel file processing.
-#[allow(dead_code)] // Methods used by rule implementations (US-009+)
 pub trait CustomRule: Send + Sync {
     /// Unique rule identifier (e.g. "unwrap-in-production").
     fn name(&self) -> &str;
 
     /// Category this rule belongs to.
+    #[allow(dead_code)] // Used by rule implementations to self-describe their category
     fn category(&self) -> Category;
 
     /// Default severity for findings from this rule.
+    #[allow(dead_code)] // Used by rule implementations to self-describe their severity
     fn severity(&self) -> Severity;
 
     /// Check a parsed Rust file and return diagnostics.

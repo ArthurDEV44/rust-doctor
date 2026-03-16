@@ -211,28 +211,14 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
         syn::visit::visit_expr_call(self, i);
     }
 
-    fn visit_expr_method_call(&mut self, i: &'ast syn::ExprMethodCall) {
-        // Check for .read() / .write() on std::fs::File-like types (heuristic)
-        if self.in_async && !self.in_spawn_blocking {
-            let method = i.method.to_string();
-            if method == "read_to_string" || method == "read_to_end" {
-                // These are blocking I/O methods when called on std::fs::File
-                let span = i.method.span();
-                self.diagnostics.push(Diagnostic {
-                    file_path: self.path.to_path_buf(),
-                    rule: "blocking-in-async".to_string(),
-                    category: Category::Async,
-                    severity: Severity::Error,
-                    message: format!(
-                        "Potentially blocking `.{method}()` call inside async context"
-                    ),
-                    help: Some("Use async I/O methods from tokio::io or async_std::io".to_string()),
-                    line: Some(span.start().line as u32),
-                    column: Some(span.start().column as u32 + 1),
-                });
-            }
-        }
-        syn::visit::visit_expr_method_call(self, i);
+    fn visit_expr_method_call(&mut self, _i: &'ast syn::ExprMethodCall) {
+        // Note: method-call based blocking detection (e.g. .read_to_string())
+        // was removed because without type information we cannot distinguish
+        // std::io::Read::read_to_string (blocking) from
+        // tokio::io::AsyncReadExt::read_to_string (async).
+        // The full-path patterns in BLOCKING_CALLS cover the function-call form
+        // (e.g., std::fs::read_to_string) without false positives.
+        syn::visit::visit_expr_method_call(self, _i);
     }
 }
 
@@ -418,7 +404,7 @@ mod tests {
             }
             "#,
         );
-        assert!(diags.len() >= 1);
+        assert!(!diags.is_empty());
         assert!(diags.iter().any(|d| d.rule == "blocking-in-async"));
     }
 

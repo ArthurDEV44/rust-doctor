@@ -114,7 +114,7 @@ impl CustomRule for PanicInLibrary {
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         // Only check library files (not main.rs or bin/*.rs)
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
-        if filename == "main.rs" || path.to_string_lossy().contains("bin/") {
+        if filename == "main.rs" || path.components().any(|c| c.as_os_str() == "bin") {
             return vec![];
         }
 

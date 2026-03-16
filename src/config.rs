@@ -33,7 +33,6 @@ pub struct IgnoreConfig {
 /// Fully resolved configuration with concrete defaults.
 /// Produced by merging CLI flags over file config over defaults.
 #[derive(Debug)]
-#[allow(dead_code)] // Fields used by future scan orchestrator (US-004+)
 pub struct ResolvedConfig {
     pub ignore_rules: Vec<String>,
     pub ignore_files: Vec<String>,
@@ -55,23 +54,24 @@ pub fn load_file_config(
 ) -> Option<FileConfig> {
     // Priority 1: rust-doctor.toml in project root
     let config_path = project_root.join("rust-doctor.toml");
-    if config_path.is_file() {
-        match std::fs::read_to_string(&config_path) {
-            Ok(content) => match toml::from_str::<FileConfig>(&content) {
-                Ok(config) => return Some(config),
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to parse rust-doctor.toml: {e}\nUsing default configuration."
-                    );
-                    return None;
-                }
-            },
+    match std::fs::read_to_string(&config_path) {
+        Ok(content) => match toml::from_str::<FileConfig>(&content) {
+            Ok(config) => return Some(config),
             Err(e) => {
                 eprintln!(
-                    "Warning: could not read rust-doctor.toml: {e}\nUsing default configuration."
+                    "Warning: failed to parse rust-doctor.toml: {e}\nUsing default configuration."
                 );
                 return None;
             }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // File doesn't exist — fall through to Cargo.toml metadata
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: could not read rust-doctor.toml: {e}\nUsing default configuration."
+            );
+            return None;
         }
     }
 
@@ -139,6 +139,25 @@ pub fn resolve_config(cli: &Cli, file_config: Option<&FileConfig>) -> ResolvedCo
         verbose,
         diff,
         fail_on,
+    }
+}
+
+/// Resolve configuration with file config only, no CLI overrides.
+/// Used by the MCP server and programmatic API.
+pub fn resolve_config_defaults(file_config: Option<&FileConfig>) -> ResolvedConfig {
+    let fc = file_config.cloned().unwrap_or_default();
+    ResolvedConfig {
+        verbose: fc.verbose.unwrap_or(false),
+        lint: fc.lint.unwrap_or(true),
+        dependencies: fc.dependencies.unwrap_or(true),
+        diff: fc.diff,
+        fail_on: fc
+            .fail_on
+            .as_deref()
+            .and_then(parse_fail_on)
+            .unwrap_or(FailOn::None),
+        ignore_rules: fc.ignore.rules,
+        ignore_files: fc.ignore.files,
     }
 }
 

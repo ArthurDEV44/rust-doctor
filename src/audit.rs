@@ -3,6 +3,7 @@ use crate::scanner::AnalysisPass;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -11,7 +12,9 @@ use std::time::Duration;
 const AUDIT_TIMEOUT_SECS: u64 = 60;
 
 /// cargo-audit analysis pass — checks dependencies for known CVEs.
-pub struct AuditPass;
+pub struct AuditPass {
+    pub offline: bool,
+}
 
 impl AnalysisPass for AuditPass {
     fn name(&self) -> &str {
@@ -25,7 +28,7 @@ impl AnalysisPass for AuditPass {
             );
             return Ok(vec![]);
         }
-        run_audit(project_root)
+        run_audit(project_root, self.offline)
     }
 }
 
@@ -39,9 +42,13 @@ fn is_cargo_audit_available() -> bool {
         .unwrap_or(false)
 }
 
-fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, String> {
+    let mut args = vec!["audit", "--json"];
+    if offline {
+        args.push("--no-fetch");
+    }
     let mut child = Command::new("cargo")
-        .args(["audit", "--json"])
+        .args(&args)
         .current_dir(project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -57,7 +64,7 @@ fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     let child = Arc::new(Mutex::new(child));
     let child_watcher = Arc::clone(&child);
-    let timed_out = Arc::new(Mutex::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_watcher = Arc::clone(&timed_out);
 
     let watcher = thread::spawn(move || {
@@ -68,14 +75,18 @@ fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             && let Ok(None) = c.try_wait()
         {
             let _ = c.kill();
-            if let Ok(mut t) = timed_out_watcher.lock() {
-                *t = true;
-            }
+            let _ = c.wait(); // Reap the child to avoid zombie process
+            timed_out_watcher.store(true, Ordering::Relaxed);
         }
     });
 
-    // Read all stdout
-    let output = std::io::read_to_string(stdout).unwrap_or_default();
+    // Read stdout with a cap to prevent OOM from pathological output
+    const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+    let mut output = String::new();
+    {
+        use std::io::Read;
+        let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_string(&mut output);
+    }
 
     // Cancel watchdog and reap child
     let _ = cancel_tx.send(());
@@ -88,7 +99,7 @@ fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     };
 
     // Check timeout
-    if *timed_out.lock().unwrap_or_else(|e| e.into_inner()) {
+    if timed_out.load(Ordering::Relaxed) {
         eprintln!("Warning: cargo-audit timed out after {AUDIT_TIMEOUT_SECS}s");
         return Ok(vec![]);
     }
@@ -118,7 +129,7 @@ fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             let advisory = &vuln.advisory;
             let pkg = &vuln.package;
 
-            let severity = cvss_to_severity(advisory.cvss.as_deref());
+            let severity = advisory_to_severity(advisory);
 
             let patched = &vuln.versions.patched;
             let fix_hint = if patched.is_empty() {
@@ -173,22 +184,56 @@ fn run_audit(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     Ok(diagnostics)
 }
 
-/// Map CVSS vector string to severity.
-/// CVSS 3.x base score: Critical (9.0-10.0), High (7.0-8.9) → Error
-/// Medium (4.0-6.9), Low (0.1-3.9) → Warning
-/// If no CVSS string, default to Warning.
-fn cvss_to_severity(cvss: Option<&str>) -> Severity {
-    let Some(cvss) = cvss else {
-        return Severity::Warning;
-    };
+/// Map advisory severity to rust-doctor severity.
+/// Uses cargo-audit's `severity` field (critical/high → Error, medium/low → Warning).
+/// Falls back to CVSS vector parsing if severity field is absent.
+fn advisory_to_severity(advisory: &Advisory) -> Severity {
+    // Prefer the severity string from cargo-audit (most accurate)
+    if let Some(ref sev) = advisory.severity {
+        return match sev.as_str() {
+            "critical" | "high" => Severity::Error,
+            _ => Severity::Warning,
+        };
+    }
 
-    // Extract base score from CVSS vector — look for AV: (Attack Vector) as heuristic
-    // CVSS:3.1/AV:N/AC:L/... → Network + Low complexity = likely High/Critical
-    // Simple heuristic: if AV:N (network) and AC:L (low complexity), treat as Error
-    if cvss.contains("AV:N") {
-        Severity::Error
+    // Fallback: parse CVSS base score from vector string
+    if let Some(ref cvss) = advisory.cvss
+        && let Some(score) = parse_cvss_base_score(cvss)
+    {
+        return if score >= 7.0 {
+            Severity::Error
+        } else {
+            Severity::Warning
+        };
+    }
+
+    Severity::Warning
+}
+
+/// Extract the base score from a CVSS 3.x vector string.
+/// Format: "CVSS:3.1/AV:N/AC:L/..." — we look for the numeric score if appended,
+/// or estimate from the vector metrics.
+fn parse_cvss_base_score(cvss: &str) -> Option<f32> {
+    // Some cargo-audit versions include the score directly
+    // Check if the CVSS string starts with a bare number
+    if let Ok(score) = cvss.parse::<f32>() {
+        return Some(score);
+    }
+
+    // Heuristic from vector: Network + Low complexity + No user interaction → likely High
+    let is_network = cvss.contains("AV:N");
+    let is_low_complexity = cvss.contains("AC:L");
+    let is_no_priv = cvss.contains("PR:N");
+    let has_high_impact = cvss.contains("C:H") || cvss.contains("I:H") || cvss.contains("A:H");
+
+    if has_high_impact && is_network && is_low_complexity && is_no_priv {
+        Some(9.0) // Critical-range estimate
+    } else if has_high_impact && is_network {
+        Some(7.5) // High-range estimate
+    } else if has_high_impact {
+        Some(6.0) // Medium-range estimate
     } else {
-        Severity::Warning
+        None
     }
 }
 
@@ -222,6 +267,8 @@ struct Advisory {
     url: Option<String>,
     #[serde(default)]
     cvss: Option<String>,
+    #[serde(default)]
+    severity: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -246,33 +293,56 @@ struct WarningEntry {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_cvss_network_low_complexity_is_error() {
-        assert_eq!(
-            cvss_to_severity(Some("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N")),
-            Severity::Error
-        );
+    fn make_advisory(severity: Option<&str>, cvss: Option<&str>) -> Advisory {
+        Advisory {
+            id: "TEST-001".into(),
+            title: "Test".into(),
+            url: None,
+            cvss: cvss.map(|s| s.to_string()),
+            severity: severity.map(|s| s.to_string()),
+        }
     }
 
     #[test]
-    fn test_cvss_network_high_complexity_is_error() {
-        assert_eq!(
-            cvss_to_severity(Some("CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N")),
-            Severity::Error
-        );
+    fn test_severity_critical_is_error() {
+        let adv = make_advisory(Some("critical"), None);
+        assert_eq!(advisory_to_severity(&adv), Severity::Error);
     }
 
     #[test]
-    fn test_cvss_local_is_warning() {
-        assert_eq!(
-            cvss_to_severity(Some("CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N")),
-            Severity::Warning
-        );
+    fn test_severity_high_is_error() {
+        let adv = make_advisory(Some("high"), None);
+        assert_eq!(advisory_to_severity(&adv), Severity::Error);
     }
 
     #[test]
-    fn test_cvss_none_is_warning() {
-        assert_eq!(cvss_to_severity(None), Severity::Warning);
+    fn test_severity_medium_is_warning() {
+        let adv = make_advisory(Some("medium"), None);
+        assert_eq!(advisory_to_severity(&adv), Severity::Warning);
+    }
+
+    #[test]
+    fn test_severity_low_is_warning() {
+        let adv = make_advisory(Some("low"), None);
+        assert_eq!(advisory_to_severity(&adv), Severity::Warning);
+    }
+
+    #[test]
+    fn test_cvss_fallback_network_critical() {
+        let adv = make_advisory(None, Some("CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"));
+        assert_eq!(advisory_to_severity(&adv), Severity::Error);
+    }
+
+    #[test]
+    fn test_cvss_fallback_local_medium() {
+        let adv = make_advisory(None, Some("CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N"));
+        assert_eq!(advisory_to_severity(&adv), Severity::Warning);
+    }
+
+    #[test]
+    fn test_no_severity_no_cvss_is_warning() {
+        let adv = make_advisory(None, None);
+        assert_eq!(advisory_to_severity(&adv), Severity::Warning);
     }
 
     #[test]

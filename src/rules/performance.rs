@@ -6,9 +6,11 @@ use syn::visit::Visit;
 
 // ─── Rule 1: excessive-clone ────────────────────────────────────────────────
 
-/// Flags `.clone()` calls that may be unnecessary.
-/// Since we lack type info, we flag all `.clone()` calls as a heuristic
-/// and rely on the help text to guide the developer.
+/// Flags `.clone()` calls as a review prompt.
+/// Without type information, this rule cannot distinguish Copy-type clones
+/// from necessary non-Copy clones. It serves as a heuristic — use
+/// `clippy::clone_on_copy` (in the clippy pass) for precise Copy-type detection.
+/// Suppress with `// rust-doctor-disable-next-line excessive-clone` for reviewed clones.
 pub struct ExcessiveClone;
 
 impl CustomRule for ExcessiveClone {

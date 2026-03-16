@@ -53,8 +53,8 @@ fn score_label(score: u32) -> &'static str {
 
 /// Render full scan results to stdout/stderr.
 pub fn render_terminal(result: &ScanResult, verbose: bool) {
-    // Handle zero files
-    if result.source_file_count == 0 {
+    // Handle zero files — still show diagnostics (e.g., audit/machete findings)
+    if result.source_file_count == 0 && result.diagnostics.is_empty() {
         eprintln!(
             "{}",
             "No Rust source files found".if_supports_color(Stream::Stderr, |t| t.yellow())
@@ -185,7 +185,7 @@ fn print_score_box(result: &ScanResult) {
     println!("{}", empty_line());
 
     // Bar
-    println!("{}", pad_line(&bar.colored, bar.plain.len()));
+    println!("{}", pad_line(&bar.colored, bar.plain.chars().count()));
     println!("{}", empty_line());
 
     // Stats
@@ -342,7 +342,6 @@ pub fn render_score(result: &ScanResult) {
             "{}",
             "No Rust source files found".if_supports_color(Stream::Stderr, |t| t.yellow())
         );
-        std::process::exit(1);
     }
     println!("{}", result.score);
 }

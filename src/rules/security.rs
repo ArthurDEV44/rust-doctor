@@ -131,6 +131,58 @@ impl<'ast> Visit<'ast> for SecretVisitor<'_> {
         }
         syn::visit::visit_expr_assign(self, i);
     }
+
+    fn visit_item_const(&mut self, i: &'ast syn::ItemConst) {
+        if let syn::Expr::Lit(expr_lit) = i.expr.as_ref()
+            && let syn::Lit::Str(lit_str) = &expr_lit.lit
+            && lit_str.value().len() > 8
+        {
+            let var_name = i.ident.to_string();
+            if is_secret_name(&var_name) {
+                let span = i.ident.span();
+                self.diagnostics.push(Diagnostic {
+                    file_path: self.path.to_path_buf(),
+                    rule: "hardcoded-secrets".to_string(),
+                    category: Category::Security,
+                    severity: Severity::Error,
+                    message: format!("Potential hardcoded secret in const `{var_name}`"),
+                    help: Some(
+                        "Use environment variables (std::env::var) or a secrets manager instead of hardcoding credentials"
+                            .to_string(),
+                    ),
+                    line: Some(span.start().line as u32),
+                    column: Some(span.start().column as u32 + 1),
+                });
+            }
+        }
+        syn::visit::visit_item_const(self, i);
+    }
+
+    fn visit_item_static(&mut self, i: &'ast syn::ItemStatic) {
+        if let syn::Expr::Lit(expr_lit) = i.expr.as_ref()
+            && let syn::Lit::Str(lit_str) = &expr_lit.lit
+            && lit_str.value().len() > 8
+        {
+            let var_name = i.ident.to_string();
+            if is_secret_name(&var_name) {
+                let span = i.ident.span();
+                self.diagnostics.push(Diagnostic {
+                    file_path: self.path.to_path_buf(),
+                    rule: "hardcoded-secrets".to_string(),
+                    category: Category::Security,
+                    severity: Severity::Error,
+                    message: format!("Potential hardcoded secret in static `{var_name}`"),
+                    help: Some(
+                        "Use environment variables (std::env::var) or a secrets manager instead of hardcoding credentials"
+                            .to_string(),
+                    ),
+                    line: Some(span.start().line as u32),
+                    column: Some(span.start().column as u32 + 1),
+                });
+            }
+        }
+        syn::visit::visit_item_static(self, i);
+    }
 }
 
 fn extract_field_name(expr: &syn::Expr) -> Option<String> {
@@ -397,6 +449,30 @@ mod tests {
         assert!(!is_secret_name("token_url"));
         assert!(!is_secret_name("secret_path"));
         assert!(!is_secret_name("api_key_name"));
+    }
+
+    #[test]
+    fn test_hardcoded_secret_in_const() {
+        let diags = check(
+            &HardcodedSecrets,
+            r#"
+            const API_KEY: &str = "sk-1234567890abcdef";
+            "#,
+        );
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("const"));
+    }
+
+    #[test]
+    fn test_hardcoded_secret_in_static() {
+        let diags = check(
+            &HardcodedSecrets,
+            r#"
+            static TOKEN: &str = "bearer-long-secret-token-value";
+            "#,
+        );
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("static"));
     }
 
     // --- unsafe-block-audit ---

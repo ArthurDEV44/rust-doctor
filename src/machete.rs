@@ -2,6 +2,7 @@ use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::scanner::AnalysisPass;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -56,7 +57,7 @@ fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     let child = Arc::new(Mutex::new(child));
     let child_watcher = Arc::clone(&child);
-    let timed_out = Arc::new(Mutex::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_watcher = Arc::clone(&timed_out);
 
     let watcher = thread::spawn(move || {
@@ -67,14 +68,18 @@ fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             && let Ok(None) = c.try_wait()
         {
             let _ = c.kill();
-            if let Ok(mut t) = timed_out_watcher.lock() {
-                *t = true;
-            }
+            let _ = c.wait(); // Reap the child to avoid zombie process
+            timed_out_watcher.store(true, Ordering::Relaxed);
         }
     });
 
-    // Read all stdout
-    let output = std::io::read_to_string(stdout).unwrap_or_default();
+    // Read stdout with a cap to prevent OOM from pathological output
+    const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
+    let mut output = String::new();
+    {
+        use std::io::Read;
+        let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_string(&mut output);
+    }
 
     // Cancel watchdog and reap child
     let _ = cancel_tx.send(());
@@ -87,7 +92,7 @@ fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     };
 
     // Check timeout
-    if *timed_out.lock().unwrap_or_else(|e| e.into_inner()) {
+    if timed_out.load(Ordering::Relaxed) {
         eprintln!("Warning: cargo-machete timed out after {MACHETE_TIMEOUT_SECS}s");
         return Ok(vec![]);
     }

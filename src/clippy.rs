@@ -5,6 +5,7 @@ use cargo_metadata::diagnostic::DiagnosticLevel;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -533,6 +534,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         "clippy",
         "--message-format=json",
         "--all-targets",
+        "--all-features",
         "--manifest-path",
     ])
     .arg(&manifest_path)
@@ -558,7 +560,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     let child = Arc::new(Mutex::new(child));
     let child_watcher = Arc::clone(&child);
-    let timed_out = Arc::new(Mutex::new(false));
+    let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_watcher = Arc::clone(&timed_out);
 
     let watcher = thread::spawn(move || {
@@ -569,9 +571,8 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             && let Ok(None) = c.try_wait()
         {
             let _ = c.kill();
-            if let Ok(mut t) = timed_out_watcher.lock() {
-                *t = true;
-            }
+            let _ = c.wait(); // Reap the child to avoid zombie process
+            timed_out_watcher.store(true, Ordering::Relaxed);
         }
     });
 
@@ -664,7 +665,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     }
 
     // Check if we timed out
-    if *timed_out.lock().unwrap_or_else(|e| e.into_inner()) {
+    if timed_out.load(Ordering::Relaxed) {
         eprintln!(
             "Warning: clippy timed out after {CLIPPY_TIMEOUT_SECS}s — reporting partial results"
         );
@@ -676,7 +677,15 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         && !diagnostics.iter().any(|d| d.severity == Severity::Error)
         && let Some(stderr) = stderr
     {
-        let stderr_output = std::io::read_to_string(stderr).unwrap_or_default();
+        // Cap stderr read to prevent OOM from pathological compiler output
+        const MAX_STDERR_BYTES: u64 = 4 * 1024; // 4 KB
+        let mut stderr_output = String::new();
+        {
+            use std::io::Read;
+            let _ = stderr
+                .take(MAX_STDERR_BYTES)
+                .read_to_string(&mut stderr_output);
+        }
         if !stderr_output.is_empty() {
             let first_error = stderr_output
                 .lines()
@@ -689,7 +698,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 category: Category::Correctness,
                 severity: Severity::Error,
                 message: first_error.to_string(),
-                help: Some(stderr_output),
+                help: Some("Run `cargo build` to see the full error output".to_string()),
                 line: None,
                 column: None,
             });

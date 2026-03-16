@@ -47,6 +47,14 @@ pub fn apply_inline_suppressions(
             project_root.join(file_path)
         };
 
+        // Guard: only read files under the project root to prevent path traversal
+        if let Ok(canonical) = abs_path.canonicalize()
+            && let Ok(root_canonical) = project_root.canonicalize()
+            && !canonical.starts_with(&root_canonical)
+        {
+            continue; // skip out-of-tree files
+        }
+
         if let Ok(content) = fs::read_to_string(&abs_path) {
             let file_suppressions = parse_suppressions(&content);
             if !file_suppressions.is_empty() {
@@ -97,8 +105,11 @@ fn parse_suppressions(content: &str) -> Vec<Suppression> {
         }
 
         // Also check for inline comments at end of line: `code // rust-doctor-disable-line`
+        // We must avoid matching `//` inside string literals. Use a simple heuristic:
+        // find the last `//` on the line that is NOT preceded by `:` (to skip URLs like https://)
+        // and is outside string literals (approximate: count unescaped `"` before the `//`).
         if !trimmed.starts_with("//")
-            && let Some(comment_start) = line.find("//")
+            && let Some(comment_start) = find_line_comment_start(line)
         {
             let comment = line[comment_start + 2..].trim();
             if let Some(rest) = comment.strip_prefix(DISABLE_LINE) {
@@ -112,6 +123,35 @@ fn parse_suppressions(content: &str) -> Vec<Suppression> {
     }
 
     suppressions
+}
+
+/// Find the start of a line comment (`//`) that is NOT inside a string literal.
+/// Returns the byte offset of the `//` or `None` if no valid comment is found.
+fn find_line_comment_start(line: &str) -> Option<usize> {
+    let mut in_string = false;
+    let mut prev_backslash = false;
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if b == b'\\' && !prev_backslash {
+                prev_backslash = true;
+                i += 1;
+                continue;
+            }
+            if b == b'"' && !prev_backslash {
+                in_string = false;
+            }
+            prev_backslash = false;
+        } else if b == b'"' {
+            in_string = true;
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// Extract the rest of a comment after a directive prefix.
@@ -138,7 +178,19 @@ fn is_suppressed(diag: &Diagnostic, suppressions: &HashMap<PathBuf, Vec<Suppress
         return false; // Diagnostics without line numbers can't be suppressed inline
     };
 
-    let Some(file_suppressions) = suppressions.get(&diag.file_path) else {
+    // Try exact path match first, then try matching by file name suffix
+    // (handles absolute vs relative path mismatches between clippy and rule engine diagnostics)
+    let file_suppressions = suppressions.get(&diag.file_path).or_else(|| {
+        suppressions.iter().find_map(|(k, v)| {
+            if diag.file_path.ends_with(k) || k.ends_with(&diag.file_path) {
+                Some(v)
+            } else {
+                None
+            }
+        })
+    });
+
+    let Some(file_suppressions) = file_suppressions else {
         return false;
     };
 
@@ -341,5 +393,42 @@ mod tests {
         assert_eq!(filtered[0].rule, "other-rule");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // --- find_line_comment_start ---
+
+    #[test]
+    fn test_find_comment_in_normal_code() {
+        assert_eq!(find_line_comment_start("let x = 1; // comment"), Some(11));
+    }
+
+    #[test]
+    fn test_find_comment_ignores_string_literal() {
+        // The // inside "https://example.com" should NOT be found as a comment
+        assert_eq!(
+            find_line_comment_start(r#"let url = "https://example.com"; // real comment"#),
+            Some(33)
+        );
+    }
+
+    #[test]
+    fn test_find_comment_only_string_no_comment() {
+        assert_eq!(
+            find_line_comment_start(r#"let url = "https://example.com";"#),
+            None
+        );
+    }
+
+    #[test]
+    fn test_find_comment_no_comment_at_all() {
+        assert_eq!(find_line_comment_start("let x = 1;"), None);
+    }
+
+    #[test]
+    fn test_suppression_not_triggered_by_string_literal() {
+        // A string literal containing "// rust-doctor-disable-line" should NOT create a suppression
+        let content = r#"let msg = "see // rust-doctor-disable-line for details";"#;
+        let supps = parse_suppressions(content);
+        assert!(supps.is_empty());
     }
 }

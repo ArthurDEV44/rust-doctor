@@ -14,7 +14,7 @@ pub struct Cli {
     pub directory: PathBuf,
 
     /// Show detailed file:line information per diagnostic
-    #[arg(long)]
+    #[arg(long, short = 'v')]
     pub verbose: bool,
 
     /// Print only the bare integer score (for CI piping)
@@ -36,6 +36,10 @@ pub struct Cli {
     /// Skip network-dependent checks (cargo-audit advisory DB fetch, etc.)
     #[arg(long)]
     pub offline: bool,
+
+    /// Run as an MCP (Model Context Protocol) stdio server for AI tool integration
+    #[arg(long, conflicts_with_all = ["score", "json"])]
+    pub mcp: bool,
 
     /// Skip all interactive prompts (auto-yes)
     #[arg(short = 'y', long = "yes")]
@@ -78,14 +82,17 @@ impl std::fmt::Display for FailOn {
 
 /// Environment variables that indicate an automated/CI environment.
 /// When any of these are set, interactive prompts are skipped.
+#[allow(dead_code)] // Used by should_skip_prompts — reserved for US-017 interactive mode
 const AUTOMATED_ENV_VARS: &[&str] = &["CI", "CLAUDECODE", "CURSOR_AGENT", "CODEX_CI"];
 
 /// Returns `true` if running in a CI or automated agent environment.
+#[allow(dead_code)] // Reserved for US-017 interactive mode
 pub fn is_automated_environment() -> bool {
     check_automated_env(|var| std::env::var_os(var).is_some())
 }
 
 /// Testable CI detection — accepts a lookup function to avoid env mutation in tests.
+#[allow(dead_code)] // Used by tests and is_automated_environment
 fn check_automated_env(lookup: impl Fn(&str) -> bool) -> bool {
     AUTOMATED_ENV_VARS.iter().any(|var| lookup(var))
 }
@@ -96,6 +103,7 @@ fn check_automated_env(lookup: impl Fn(&str) -> bool) -> bool {
 /// - `--yes` / `-y` flag is passed
 /// - A known CI/agent env var is set
 /// - stdin is not a TTY (e.g., piped input)
+#[allow(dead_code)] // Reserved for US-017 interactive mode
 pub fn should_skip_prompts(cli: &Cli) -> bool {
     cli.yes || is_automated_environment() || !std::io::IsTerminal::is_terminal(&std::io::stdin())
 }

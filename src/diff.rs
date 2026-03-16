@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// Result of diff mode resolution.
 pub struct DiffContext {
@@ -26,6 +26,7 @@ pub fn resolve_diff(project_root: &Path, base_hint: &str) -> Result<DiffContext,
     let base = if base_hint == "auto" {
         auto_detect_base(project_root)?
     } else {
+        validate_ref_name(base_hint)?;
         // Verify the branch/commit exists
         verify_ref_exists(project_root, base_hint)?;
         base_hint.to_string()
@@ -85,6 +86,37 @@ fn auto_detect_base(dir: &Path) -> Result<String, String> {
     Err("Could not auto-detect base branch. Specify one with `--diff <branch>`".into())
 }
 
+/// Validate that a ref name is safe to pass as a git argument.
+/// Rejects values that could cause git argument injection or unexpected behavior.
+fn validate_ref_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Ref name cannot be empty".into());
+    }
+    if name.starts_with('-') {
+        return Err(format!(
+            "Invalid ref name '{name}': must not start with '-'"
+        ));
+    }
+    if name.contains('\0') {
+        return Err(format!("Invalid ref name '{name}': contains null byte"));
+    }
+    if name.contains("..") {
+        return Err(format!("Invalid ref name '{name}': contains '..' sequence"));
+    }
+    if name.contains(|c: char| c.is_ascii_control()) {
+        return Err(format!(
+            "Invalid ref name '{name}': contains control character"
+        ));
+    }
+    if name.contains(' ') {
+        return Err(format!("Invalid ref name '{name}': contains space"));
+    }
+    if name.contains(':') {
+        return Err(format!("Invalid ref name '{name}': contains colon"));
+    }
+    Ok(())
+}
+
 /// Verify a git ref (branch, tag, commit) exists.
 fn verify_ref_exists(dir: &Path, ref_name: &str) -> Result<(), String> {
     let output = Command::new("git")
@@ -103,28 +135,58 @@ fn verify_ref_exists(dir: &Path, ref_name: &str) -> Result<(), String> {
 
 /// Get the list of changed `.rs` files between base and HEAD.
 fn get_changed_rs_files(dir: &Path, base: &str) -> Result<HashSet<PathBuf>, String> {
-    let output = Command::new("git")
-        .args(["diff", "--name-only", &format!("{base}...HEAD")])
+    // Use merge-base to find the common ancestor, then diff against HEAD.
+    // This avoids interpolating user input into a single argument with `...`.
+    let merge_base_output = Command::new("git")
+        .args(["merge-base", base, "HEAD"])
         .current_dir(dir)
         .output()
+        .map_err(|e| format!("git merge-base failed: {e}"))?;
+
+    let effective_base = if merge_base_output.status.success() {
+        let candidate = String::from_utf8_lossy(&merge_base_output.stdout)
+            .trim()
+            .to_string();
+        // Validate merge-base output looks like a hex SHA to prevent injection
+        if !candidate.is_empty()
+            && candidate.len() <= 40
+            && candidate.chars().all(|c| c.is_ascii_hexdigit())
+        {
+            candidate
+        } else {
+            base.to_string()
+        }
+    } else {
+        // Fallback: use base directly (e.g., for commit SHAs)
+        base.to_string()
+    };
+
+    let mut child = Command::new("git")
+        .args(["diff", "--name-only", &effective_base, "HEAD"])
+        .current_dir(dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .map_err(|e| format!("git diff failed: {e}"))?;
 
-    if !output.status.success() {
-        // Fallback: try without the triple-dot syntax (for single commits)
-        let output = Command::new("git")
-            .args(["diff", "--name-only", base, "HEAD"])
-            .current_dir(dir)
-            .output()
-            .map_err(|e| format!("git diff failed: {e}"))?;
-
-        if !output.status.success() {
-            return Err(format!("git diff failed for base '{base}'"));
-        }
-
-        return Ok(parse_changed_rs_files(&output.stdout));
+    // Cap output to prevent OOM on pathological repositories
+    const MAX_DIFF_OUTPUT_BYTES: u64 = 1024 * 1024; // 1 MB
+    let mut stdout_data = Vec::new();
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::Read;
+        let _ = stdout
+            .take(MAX_DIFF_OUTPUT_BYTES)
+            .read_to_end(&mut stdout_data);
     }
 
-    Ok(parse_changed_rs_files(&output.stdout))
+    let status = child
+        .wait()
+        .map_err(|e| format!("git diff wait failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("git diff failed for base '{base}'"));
+    }
+
+    Ok(parse_changed_rs_files(&stdout_data))
 }
 
 fn parse_changed_rs_files(output: &[u8]) -> HashSet<PathBuf> {
@@ -210,6 +272,47 @@ mod tests {
         let filtered = filter_to_changed_files(diags, &changed);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].file_path, PathBuf::from("src/main.rs"));
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_dash_prefix() {
+        assert!(validate_ref_name("--upload-pack=evil").is_err());
+        assert!(validate_ref_name("-f").is_err());
+    }
+
+    #[test]
+    fn test_validate_ref_name_accepts_valid_refs() {
+        assert!(validate_ref_name("main").is_ok());
+        assert!(validate_ref_name("feature/my-branch").is_ok());
+        assert!(validate_ref_name("HEAD~1").is_ok());
+        assert!(validate_ref_name("abc123def").is_ok());
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_empty() {
+        assert!(validate_ref_name("").is_err());
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_double_dot() {
+        assert!(validate_ref_name("main..HEAD").is_err());
+        assert!(validate_ref_name("../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_control_chars() {
+        assert!(validate_ref_name("main\nHEAD").is_err());
+        assert!(validate_ref_name("main\x00HEAD").is_err());
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_space() {
+        assert!(validate_ref_name("main HEAD").is_err());
+    }
+
+    #[test]
+    fn test_validate_ref_name_rejects_colon() {
+        assert!(validate_ref_name("refs/heads/main:refs/heads/foo").is_err());
     }
 
     #[test]

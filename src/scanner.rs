@@ -1,6 +1,5 @@
 use crate::config::ResolvedConfig;
-use crate::diagnostics::{Diagnostic, ScanResult, Severity};
-use crate::output;
+use crate::diagnostics::Diagnostic;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
@@ -26,6 +25,14 @@ struct PassResult {
     result: Result<Vec<Diagnostic>, String>,
 }
 
+/// Result from the scan orchestrator (diagnostics + metadata, no score).
+/// Score calculation happens once in main after all workspace members are merged.
+pub struct ScanPassResult {
+    pub diagnostics: Vec<Diagnostic>,
+    pub skipped_passes: Vec<String>,
+    pub elapsed: std::time::Duration,
+}
+
 /// Orchestrates multiple analysis passes in parallel and merges results.
 pub struct ScanOrchestrator {
     passes: Vec<Box<dyn AnalysisPass>>,
@@ -36,16 +43,16 @@ impl ScanOrchestrator {
         Self { passes }
     }
 
-    /// Run all analysis passes in parallel and return merged, filtered results.
+    /// Run all analysis passes in parallel and return filtered diagnostics,
+    /// skipped passes, and the elapsed time.
     ///
     /// `suppress_spinner` should be true for `--score` or `--json` modes.
     pub fn run(
         &self,
         project_root: &Path,
         config: &ResolvedConfig,
-        source_file_count: usize,
         suppress_spinner: bool,
-    ) -> ScanResult {
+    ) -> ScanPassResult {
         let start = Instant::now();
 
         // Create spinner
@@ -99,28 +106,10 @@ impl ScanOrchestrator {
         // Filter diagnostics by config
         let filtered = filter_diagnostics(all_diagnostics, config);
 
-        // Count errors and warnings
-        let error_count = filtered
-            .iter()
-            .filter(|d| d.severity == Severity::Error)
-            .count();
-        let warning_count = filtered
-            .iter()
-            .filter(|d| d.severity == Severity::Warning)
-            .count();
-
-        // Calculate score
-        let (score, score_label) = output::calculate_score(&filtered);
-
-        ScanResult {
+        ScanPassResult {
             diagnostics: filtered,
-            score,
-            score_label,
-            source_file_count,
-            elapsed: start.elapsed(),
             skipped_passes,
-            error_count,
-            warning_count,
+            elapsed: start.elapsed(),
         }
     }
 
@@ -136,14 +125,23 @@ impl ScanOrchestrator {
                 })
                 .collect();
 
+            let pass_names: Vec<_> = self.passes.iter().map(|p| p.name().to_string()).collect();
+
             handles
                 .into_iter()
-                .map(|h| match h.join() {
+                .enumerate()
+                .map(|(i, h)| match h.join() {
                     Ok((name, result)) => PassResult { name, result },
-                    Err(_) => PassResult {
-                        name: "<panicked>".to_string(),
-                        result: Err("analysis pass panicked".to_string()),
-                    },
+                    Err(_) => {
+                        let name = pass_names
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        PassResult {
+                            name,
+                            result: Err("analysis pass panicked".to_string()),
+                        }
+                    }
                 })
                 .collect()
         })
@@ -363,10 +361,20 @@ mod tests {
         };
         let orch = ScanOrchestrator::new(vec![Box::new(pass1), Box::new(pass2)]);
         let config = make_config();
-        let result = orch.run(Path::new("."), &config, 10, true);
+        let result = orch.run(Path::new("."), &config, true);
         assert_eq!(result.diagnostics.len(), 2);
-        assert_eq!(result.error_count, 1);
-        assert_eq!(result.warning_count, 1);
+        let errors = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .count();
+        let warnings = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count();
+        assert_eq!(errors, 1);
+        assert_eq!(warnings, 1);
         assert!(result.skipped_passes.is_empty());
     }
 
@@ -377,7 +385,7 @@ mod tests {
         };
         let orch = ScanOrchestrator::new(vec![Box::new(pass1), Box::new(FailingPass)]);
         let config = make_config();
-        let result = orch.run(Path::new("."), &config, 10, true);
+        let result = orch.run(Path::new("."), &config, true);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.skipped_passes, vec!["failing"]);
     }
@@ -386,7 +394,7 @@ mod tests {
     fn test_orchestrator_all_passes_fail() {
         let orch = ScanOrchestrator::new(vec![Box::new(FailingPass), Box::new(FailingPass)]);
         let config = make_config();
-        let result = orch.run(Path::new("."), &config, 0, true);
+        let result = orch.run(Path::new("."), &config, true);
         assert!(result.diagnostics.is_empty());
         assert_eq!(result.skipped_passes.len(), 2);
     }
@@ -395,7 +403,7 @@ mod tests {
     fn test_orchestrator_no_passes() {
         let orch = ScanOrchestrator::new(vec![]);
         let config = make_config();
-        let result = orch.run(Path::new("."), &config, 0, true);
+        let result = orch.run(Path::new("."), &config, true);
         assert!(result.diagnostics.is_empty());
         assert!(result.skipped_passes.is_empty());
     }
@@ -411,7 +419,7 @@ mod tests {
         let orch = ScanOrchestrator::new(vec![Box::new(pass)]);
         let mut config = make_config();
         config.ignore_rules = vec!["rule-to-ignore".to_string()];
-        let result = orch.run(Path::new("."), &config, 5, true);
+        let result = orch.run(Path::new("."), &config, true);
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].rule, "rule-to-keep");
     }
