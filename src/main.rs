@@ -4,6 +4,7 @@ mod clippy;
 mod config;
 mod diagnostics;
 mod discovery;
+mod machete;
 mod output;
 mod rules;
 mod scanner;
@@ -114,6 +115,7 @@ fn main() {
             resolved.ignore_files.clone(),
         )),
         Box::new(audit::AuditPass),
+        Box::new(machete::MachetePass),
     ];
 
     // Run scan orchestrator

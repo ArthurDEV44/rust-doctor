@@ -33,10 +33,10 @@
     {
       "id": "EP-004",
       "title": "Dependency Analysis",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "priority": "P1",
       "stories_total": 2,
-      "stories_done": 1
+      "stories_done": 2
     },
     {
       "id": "EP-005",
@@ -212,13 +212,13 @@
       "id": "US-013",
       "title": "cargo-machete integration for unused dependencies",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P1",
       "size": "S",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-03-16",
+      "completed_at": "2026-03-16",
+      "reviewed_at": "2026-03-16"
     },
     {
       "id": "US-014",

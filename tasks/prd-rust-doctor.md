@@ -342,13 +342,13 @@ Assess dependency health via external tools.
 **As a** developer, **I want** rust-doctor to detect unused dependencies **so that** I can keep my dependency tree lean.
 
 **Acceptance Criteria:**
-- [ ] Detect if `cargo-machete` is installed via `which` crate
-- [ ] If installed: spawn `cargo machete --with-metadata` and parse stdout
-- [ ] Map each unused dependency to a diagnostic: crate name, Cargo.toml file path, severity Warning
-- [ ] Help text: "Remove `{crate}` from [dependencies] in {Cargo.toml path}"
-- [ ] If not installed: print info message and skip pass (zero diagnostics, no score penalty)
-- [ ] Timeout: 30 seconds
-- [ ] Error: cargo-machete false positive on crates used only via proc-macro — accepted as known limitation, documented
+- [x] Detect if `cargo-machete` is installed via `which` crate
+- [x] If installed: spawn `cargo machete --with-metadata` and parse stdout
+- [x] Map each unused dependency to a diagnostic: crate name, Cargo.toml file path, severity Warning
+- [x] Help text: "Remove `{crate}` from [dependencies] in {Cargo.toml path}"
+- [x] If not installed: print info message and skip pass (zero diagnostics, no score penalty)
+- [x] Timeout: 30 seconds
+- [x] Error: cargo-machete false positive on crates used only via proc-macro — accepted as known limitation, documented
 
 **Priority:** P1 | **Size:** S (2 pts) | **Blocked by:** US-004
 
