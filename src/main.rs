@@ -120,6 +120,11 @@ fn main() {
         custom_rules.extend(rules::async_rules::all_rules());
     }
 
+    // Framework-specific rules (US-015)
+    custom_rules.extend(rules::framework::rules_for_frameworks(
+        &project_info.frameworks,
+    ));
+
     // Build analysis passes
     let passes: Vec<Box<dyn scanner::AnalysisPass>> = vec![
         Box::new(clippy::ClippyPass),

@@ -382,14 +382,14 @@ Rules specific to async Rust and popular frameworks.
 **As a** developer using axum/actix-web/rocket, **I want** framework-specific checks **so that** I follow each framework's best practices.
 
 **Acceptance Criteria:**
-- [ ] Rules activate conditionally based on `ProjectInfo.frameworks`
-- [ ] **axum:** `axum-handler-not-async` — Flag handler functions passed to Router that are not async — severity: Warning
-- [ ] **axum:** `axum-state-clone` — Flag `State<T>` where T doesn't implement Clone — severity: Error
-- [ ] **actix-web:** `actix-blocking-handler` — Flag blocking operations in actix handler functions — severity: Warning
-- [ ] **tokio:** `tokio-main-missing` — Flag `async fn main()` without `#[tokio::main]` attribute — severity: Error
-- [ ] **tokio:** `tokio-spawn-without-move` — Flag `tokio::spawn` with closures capturing references (needs `move`) — severity: Error
-- [ ] Each rule includes framework-specific help text with code example
-- [ ] Error: framework not detected but user has the dependency under a feature flag — may miss rules; accepted limitation
+- [x] Rules activate conditionally based on `ProjectInfo.frameworks`
+- [x] **axum:** `axum-handler-not-async` — Flag handler functions passed to Router that are not async — severity: Warning
+- [ ] **axum:** `axum-state-clone` — Flag `State<T>` where T doesn't implement Clone — severity: Error (deferred — requires type system analysis)
+- [x] **actix-web:** `actix-blocking-handler` — Flag blocking operations in actix handler functions — severity: Warning
+- [x] **tokio:** `tokio-main-missing` — Flag `async fn main()` without `#[tokio::main]` attribute — severity: Error
+- [x] **tokio:** `tokio-spawn-without-move` — Flag `tokio::spawn` with closures capturing references (needs `move`) — severity: Error
+- [x] Each rule includes framework-specific help text with code example
+- [x] Error: framework not detected but user has the dependency under a feature flag — may miss rules; accepted limitation
 
 **Priority:** P1 | **Size:** M (3 pts) | **Blocked by:** US-008, US-002
 
