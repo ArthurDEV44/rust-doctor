@@ -10,7 +10,7 @@ use syn::visit::Visit;
 pub struct TokioMainMissing;
 
 impl CustomRule for TokioMainMissing {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "tokio-main-missing"
     }
     fn category(&self) -> Category {
@@ -73,7 +73,7 @@ impl CustomRule for TokioMainMissing {
 pub struct TokioSpawnWithoutMove;
 
 impl CustomRule for TokioSpawnWithoutMove {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "tokio-spawn-without-move"
     }
     fn category(&self) -> Category {
@@ -106,7 +106,7 @@ impl<'ast> Visit<'ast> for SpawnVisitor<'_> {
                 .iter()
                 .map(|s| s.ident.to_string())
                 .collect();
-            let seg_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+            let seg_strs: Vec<&str> = segments.iter().map(std::string::String::as_str).collect();
 
             if seg_strs.ends_with(&["spawn"])
                 && (seg_strs.len() == 1 || seg_strs.contains(&"tokio"))
@@ -154,7 +154,7 @@ const AXUM_EXTRACTOR_TYPES: &[&str] = &[
 ];
 
 impl CustomRule for AxumHandlerNotAsync {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "axum-handler-not-async"
     }
     fn category(&self) -> Category {
@@ -219,7 +219,7 @@ pub struct ActixBlockingHandler;
 const ACTIX_EXTRACTOR_PREFIXES: &[&str] = &["web"];
 
 impl CustomRule for ActixBlockingHandler {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "actix-blocking-handler"
     }
     fn category(&self) -> Category {
@@ -265,7 +265,7 @@ impl<'ast> Visit<'ast> for ActixVisitor<'_> {
                 .iter()
                 .map(|s| s.ident.to_string())
                 .collect();
-            let seg_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+            let seg_strs: Vec<&str> = segments.iter().map(std::string::String::as_str).collect();
 
             if seg_strs.ends_with(&["thread", "sleep"])
                 || seg_strs.ends_with(&["std", "thread", "sleep"])

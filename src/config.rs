@@ -103,8 +103,7 @@ fn parse_fail_on(value: &str) -> Option<FailOn> {
         "none" => Some(FailOn::None),
         _ => {
             eprintln!(
-                "Warning: invalid fail_on value '{}' in config. Valid values: error, warning, none",
-                value
+                "Warning: invalid fail_on value '{value}' in config. Valid values: error, warning, none"
             );
             None
         }

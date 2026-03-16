@@ -445,8 +445,7 @@ fn map_lint_category(lint: &str) -> Category {
     match lint {
         "compiler-error" | "compiler-ice" => Category::Correctness,
         _ => lookup_lint(lint)
-            .map(|(cat, _)| cat)
-            .unwrap_or(Category::Style),
+            .map_or(Category::Style, |(cat, _)| cat),
     }
 }
 
@@ -456,8 +455,7 @@ fn resolve_severity(lint: &str, clippy_severity: Severity) -> Severity {
     match lint {
         "compiler-error" | "compiler-ice" => Severity::Error,
         _ => lookup_lint(lint)
-            .map(|(_, sev)| sev)
-            .unwrap_or(clippy_severity),
+            .map_or(clippy_severity, |(_, sev)| sev),
     }
 }
 
@@ -475,15 +473,21 @@ pub fn known_lint_names() -> Vec<&'static str> {
 pub struct ClippyPass;
 
 impl AnalysisPass for ClippyPass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "clippy"
     }
 
-    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_clippy_available() {
-            return Err("clippy not found — install with: rustup component add clippy".to_string());
+            return Err(crate::error::PassError::Failed {
+                pass: "clippy".to_string(),
+                message: "clippy not found — install with: rustup component add clippy".to_string(),
+            });
         }
-        run_clippy(project_root)
+        run_clippy(project_root).map_err(|message| crate::error::PassError::Failed {
+            pass: "clippy".to_string(),
+            message,
+        })
     }
 }
 
@@ -582,9 +586,8 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let mut build_succeeded = true;
 
     for message in Message::parse_stream(reader) {
-        let message = match message {
-            Ok(m) => m,
-            Err(_) => continue,
+        let Ok(message) = message else {
+            continue;
         };
 
         match message {

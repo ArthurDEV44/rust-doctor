@@ -15,7 +15,7 @@ const SCORE_BAR_WIDTH: usize = 40;
 /// Calculate health score from diagnostics.
 /// Score = 100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75), clamped 0–100.
 /// Returns (score, label).
-pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, String) {
+pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, &'static str) {
     let mut error_rules = HashSet::new();
     let mut warning_rules = HashSet::new();
 
@@ -34,7 +34,7 @@ pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, String) {
         + (warning_rules.len() as f64 * WARNING_RULE_PENALTY);
 
     let score = (100.0 - penalty).round().clamp(0.0, 100.0) as u32;
-    let label = score_label(score).to_string();
+    let label = score_label(score);
 
     (score, label)
 }
@@ -219,7 +219,7 @@ struct ScoreBar {
 }
 
 fn build_score_bar(score: u32) -> ScoreBar {
-    let filled = ((score as f64 / 100.0) * SCORE_BAR_WIDTH as f64).round() as usize;
+    let filled = ((f64::from(score) / 100.0) * SCORE_BAR_WIDTH as f64).round() as usize;
     let empty = SCORE_BAR_WIDTH - filled;
 
     let filled_str = "█".repeat(filled);
@@ -347,14 +347,14 @@ pub fn render_score(result: &ScanResult) {
 }
 
 /// Render `--json` mode: full ScanResult as JSON to stdout.
-pub fn render_json(result: &ScanResult) {
-    match serde_json::to_string_pretty(result) {
-        Ok(json) => println!("{json}"),
-        Err(e) => {
-            eprintln!("Error: failed to serialize scan results: {e}");
-            std::process::exit(1);
-        }
-    }
+///
+/// # Errors
+///
+/// Returns an error if serialization fails.
+pub fn render_json(result: &ScanResult) -> Result<(), serde_json::Error> {
+    let json = serde_json::to_string_pretty(result)?;
+    println!("{json}");
+    Ok(())
 }
 
 #[cfg(test)]

@@ -14,18 +14,21 @@ const MACHETE_TIMEOUT_SECS: u64 = 30;
 pub struct MachetePass;
 
 impl AnalysisPass for MachetePass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "dependencies (cargo-machete)"
     }
 
-    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_machete_available() {
             eprintln!(
                 "Info: Install cargo-machete for unused dependency detection: cargo install cargo-machete"
             );
             return Ok(vec![]);
         }
-        run_machete(project_root)
+        run_machete(project_root).map_err(|message| crate::error::PassError::Failed {
+            pass: "dependencies (cargo-machete)".to_string(),
+            message,
+        })
     }
 }
 

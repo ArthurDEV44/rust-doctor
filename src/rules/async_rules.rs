@@ -86,7 +86,7 @@ const BLOCKING_SHORT: &[(&str, &str, &str)] = &[(
 )];
 
 impl CustomRule for BlockingInAsync {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "blocking-in-async"
     }
     fn category(&self) -> Category {
@@ -153,7 +153,7 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
                 .collect();
 
             // Check spawn_blocking — mark so we skip inner closure
-            let seg_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+            let seg_strs: Vec<&str> = segments.iter().map(std::string::String::as_str).collect();
             if seg_strs.ends_with(&["spawn_blocking"]) {
                 let was_spawn = self.in_spawn_blocking;
                 self.in_spawn_blocking = true;
@@ -235,7 +235,7 @@ fn segments_match(actual: &[&str], pattern: &[&str]) -> bool {
 pub struct BlockOnInAsync;
 
 impl CustomRule for BlockOnInAsync {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "block-on-in-async"
     }
     fn category(&self) -> Category {
@@ -314,7 +314,7 @@ impl<'ast> Visit<'ast> for BlockOnVisitor<'_> {
                 .iter()
                 .map(|s| s.ident.to_string())
                 .collect();
-            let seg_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
+            let seg_strs: Vec<&str> = segments.iter().map(std::string::String::as_str).collect();
             if seg_strs.ends_with(&["block_on"]) {
                 let span = func_path.path.span();
                 self.diagnostics.push(Diagnostic {

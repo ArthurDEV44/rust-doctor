@@ -54,7 +54,7 @@ fn is_secret_name(name: &str) -> bool {
 }
 
 impl CustomRule for HardcodedSecrets {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "hardcoded-secrets"
     }
     fn category(&self) -> Category {
@@ -205,7 +205,7 @@ fn extract_field_name(expr: &syn::Expr) -> Option<String> {
 pub struct UnsafeBlockAudit;
 
 impl CustomRule for UnsafeBlockAudit {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "unsafe-block-audit"
     }
     fn category(&self) -> Category {
@@ -283,7 +283,7 @@ pub struct SqlInjectionRisk;
 const SQL_METHODS: &[&str] = &["query", "execute", "raw", "query_as", "execute_raw"];
 
 impl CustomRule for SqlInjectionRisk {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "sql-injection-risk"
     }
     fn category(&self) -> Category {

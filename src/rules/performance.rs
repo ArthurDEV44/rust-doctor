@@ -14,7 +14,7 @@ use syn::visit::Visit;
 pub struct ExcessiveClone;
 
 impl CustomRule for ExcessiveClone {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "excessive-clone"
     }
     fn category(&self) -> Category {
@@ -65,7 +65,7 @@ impl<'ast> Visit<'ast> for CloneVisitor<'_> {
 pub struct StringFromLiteral;
 
 impl CustomRule for StringFromLiteral {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "string-from-literal"
     }
     fn category(&self) -> Category {
@@ -152,7 +152,7 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
 pub struct CollectThenIterate;
 
 impl CustomRule for CollectThenIterate {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "collect-then-iterate"
     }
     fn category(&self) -> Category {
@@ -218,7 +218,7 @@ fn is_collect_call(expr: &syn::Expr) -> bool {
 pub struct LargeEnumVariant;
 
 impl CustomRule for LargeEnumVariant {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "large-enum-variant"
     }
     fn category(&self) -> Category {
@@ -285,7 +285,7 @@ impl CustomRule for LargeEnumVariant {
 pub struct UnnecessaryAllocation;
 
 impl CustomRule for UnnecessaryAllocation {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "unnecessary-allocation"
     }
     fn category(&self) -> Category {

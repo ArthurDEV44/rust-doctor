@@ -159,7 +159,7 @@ fn extract_comment_directive<'a>(line: &'a str, directive: &str) -> Option<&'a s
     // Match: // directive [rest]
     let stripped = line.strip_prefix("//")?;
     let stripped = stripped.trim_start();
-    stripped.strip_prefix(directive).map(|rest| rest.trim())
+    stripped.strip_prefix(directive).map(str::trim)
 }
 
 /// Parse an optional rule name from the rest of a directive.

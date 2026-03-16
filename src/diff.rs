@@ -192,12 +192,13 @@ fn get_changed_rs_files(dir: &Path, base: &str) -> Result<HashSet<PathBuf>, Stri
 fn parse_changed_rs_files(output: &[u8]) -> HashSet<PathBuf> {
     String::from_utf8_lossy(output)
         .lines()
-        .filter(|line| line.ends_with(".rs"))
+        .filter(|line| std::path::Path::new(line).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rs")))
         .map(|line| PathBuf::from(line.trim()))
         .collect()
 }
 
 /// Filter diagnostics to only include those from changed files.
+#[allow(clippy::implicit_hasher)]
 pub fn filter_to_changed_files(
     diagnostics: Vec<crate::diagnostics::Diagnostic>,
     changed_files: &HashSet<PathBuf>,

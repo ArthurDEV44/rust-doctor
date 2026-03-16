@@ -5,11 +5,11 @@ pub mod performance;
 pub mod security;
 
 use crate::diagnostics::{Category, Diagnostic, Severity};
-use crate::scanner::AnalysisPass;
+use crate::scanner::{self, AnalysisPass};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use rayon::prelude::*;
 use std::panic::{self, AssertUnwindSafe};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Trait for custom AST-based rules that clippy doesn't cover.
 ///
@@ -19,15 +19,34 @@ pub trait CustomRule: Send + Sync {
     fn name(&self) -> &str;
 
     /// Category this rule belongs to.
-    #[allow(dead_code)] // Used by rule implementations to self-describe their category
     fn category(&self) -> Category;
 
     /// Default severity for findings from this rule.
-    #[allow(dead_code)] // Used by rule implementations to self-describe their severity
     fn severity(&self) -> Severity;
 
     /// Check a parsed Rust file and return diagnostics.
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic>;
+
+    /// Helper to construct a `Diagnostic` using this rule's metadata.
+    fn diagnostic(
+        &self,
+        path: &Path,
+        message: String,
+        help: Option<String>,
+        line: Option<u32>,
+        column: Option<u32>,
+    ) -> Diagnostic {
+        Diagnostic {
+            file_path: path.to_path_buf(),
+            rule: self.name().to_string(),
+            category: self.category(),
+            severity: self.severity(),
+            message,
+            help,
+            line,
+            column,
+        }
+    }
 }
 
 /// The rule engine: runs custom rules against all `.rs` files in parallel.
@@ -58,7 +77,7 @@ impl RuleEngine {
             return Ok(vec![]);
         }
 
-        let files = collect_rs_files(&src_dir);
+        let files = scanner::collect_rs_files(&src_dir);
         if files.is_empty() {
             return Ok(vec![]);
         }
@@ -133,34 +152,6 @@ fn run_rule_safely(rule: &dyn CustomRule, syntax: &syn::File, path: &Path) -> Ve
     }
 }
 
-/// Collect all `.rs` files recursively under a directory.
-/// Skips hidden dirs, target, vendor, and generated directories.
-fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    collect_rs_files_recursive(dir, &mut files);
-    files
-}
-
-fn collect_rs_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(meta) = std::fs::symlink_metadata(&path) else {
-            continue;
-        };
-        if meta.is_dir() {
-            let name = path.file_name().unwrap_or_default().to_string_lossy();
-            if !name.starts_with('.') && name != "target" && name != "vendor" && name != "generated"
-            {
-                collect_rs_files_recursive(&path, files);
-            }
-        } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
-            files.push(path);
-        }
-    }
-}
 
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
     let mut builder = GlobSetBuilder::new();
@@ -170,7 +161,7 @@ fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
                 builder.add(glob);
             }
             Err(e) => {
-                eprintln!("Warning: invalid glob pattern '{}': {e}", pattern);
+                eprintln!("Warning: invalid glob pattern '{pattern}': {e}");
             }
         }
     }
@@ -193,12 +184,17 @@ impl RuleEnginePass {
 }
 
 impl AnalysisPass for RuleEnginePass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "custom rules"
     }
 
-    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-        self.engine.scan(project_root, &self.ignore_files)
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
+        self.engine
+            .scan(project_root, &self.ignore_files)
+            .map_err(|message| crate::error::PassError::Failed {
+                pass: "custom rules".to_string(),
+                message,
+            })
     }
 }
 
@@ -206,6 +202,7 @@ impl AnalysisPass for RuleEnginePass {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
 
     // --- Test rule implementations ---
 
@@ -414,7 +411,7 @@ mod tests {
             "collect-rs",
             &[("main.rs", ""), ("lib.rs", ""), ("sub/mod.rs", "")],
         );
-        let files = collect_rs_files(&dir.join("src"));
+        let files = scanner::collect_rs_files(&dir.join("src"));
         assert_eq!(files.len(), 3);
         let _ = std::fs::remove_dir_all(&dir);
     }

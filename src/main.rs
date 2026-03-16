@@ -1,21 +1,6 @@
-mod audit;
-mod cli;
-mod clippy;
-mod config;
-mod diagnostics;
-mod diff;
-mod discovery;
-mod machete;
-mod mcp;
-mod output;
-mod rules;
-mod scan;
-mod scanner;
-mod suppression;
-mod workspace;
-
 use clap::Parser;
-use cli::Cli;
+use rust_doctor::cli::{Cli, FailOn};
+use rust_doctor::{config, discovery, mcp, output, scan};
 use std::process;
 
 fn main() {
@@ -88,7 +73,10 @@ fn main() {
     if cli.score {
         output::render_score(&scan_result);
     } else if cli.json {
-        output::render_json(&scan_result);
+        if let Err(e) = output::render_json(&scan_result) {
+            eprintln!("Error: failed to serialize scan results: {e}");
+            process::exit(1);
+        }
     } else {
         output::render_terminal(&scan_result, resolved.verbose);
     }
@@ -96,9 +84,9 @@ fn main() {
     // Exit code
     let fail_on = resolved.fail_on;
     let should_fail = match fail_on {
-        cli::FailOn::Error => scan_result.error_count > 0,
-        cli::FailOn::Warning => scan_result.error_count > 0 || scan_result.warning_count > 0,
-        cli::FailOn::None => false,
+        FailOn::Error => scan_result.error_count > 0,
+        FailOn::Warning => scan_result.error_count > 0 || scan_result.warning_count > 0,
+        FailOn::None => false,
     };
     if should_fail {
         process::exit(1);

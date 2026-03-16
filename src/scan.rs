@@ -36,7 +36,7 @@ pub fn scan_project(
     offline: bool,
     project_filter: &[String],
     suppress_spinner: bool,
-) -> Result<ScanResult, String> {
+) -> Result<ScanResult, crate::error::ScanError> {
     // Validate ignored rules
     let mut known_rules = clippy::known_lint_names();
     known_rules.extend_from_slice(CUSTOM_RULE_NAMES);
@@ -44,7 +44,8 @@ pub fn scan_project(
 
     // Resolve workspace members
     let scan_roots: Vec<std::path::PathBuf> = if project_info.is_workspace {
-        let members = workspace::resolve_members(&project_info.workspace_members, project_filter)?;
+        let members = workspace::resolve_members(&project_info.workspace_members, project_filter)
+            .map_err(crate::error::ScanError::Workspace)?;
         if resolved.verbose {
             eprintln!(
                 "Workspace: scanning {} of {} members",
@@ -70,7 +71,7 @@ pub fn scan_project(
             let fw_list: Vec<String> = project_info
                 .frameworks
                 .iter()
-                .map(|f| f.to_string())
+                .map(std::string::ToString::to_string)
                 .collect();
             eprintln!("Frameworks: {}", fw_list.join(", "));
         }

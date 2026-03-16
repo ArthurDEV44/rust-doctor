@@ -3,7 +3,7 @@ use crate::diagnostics::Diagnostic;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// Trait for pluggable analysis passes.
@@ -16,13 +16,13 @@ pub trait AnalysisPass: Send + Sync {
 
     /// Run the analysis and return diagnostics.
     /// The `project_root` is the absolute path to the project being scanned.
-    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String>;
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError>;
 }
 
 /// Result from a single analysis pass (internal).
 struct PassResult {
     name: String,
-    result: Result<Vec<Diagnostic>, String>,
+    result: Result<Vec<Diagnostic>, crate::error::PassError>,
 }
 
 /// Result from the scan orchestrator (diagnostics + metadata, no score).
@@ -130,17 +130,14 @@ impl ScanOrchestrator {
             handles
                 .into_iter()
                 .enumerate()
-                .map(|(i, h)| match h.join() {
-                    Ok((name, result)) => PassResult { name, result },
-                    Err(_) => {
-                        let name = pass_names
-                            .get(i)
-                            .cloned()
-                            .unwrap_or_else(|| "<unknown>".to_string());
-                        PassResult {
-                            name,
-                            result: Err("analysis pass panicked".to_string()),
-                        }
+                .map(|(i, h)| if let Ok((name, result)) = h.join() { PassResult { name, result } } else {
+                    let name = pass_names
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    PassResult {
+                        name: name.clone(),
+                        result: Err(crate::error::PassError::Panicked { pass: name }),
                     }
                 })
                 .collect()
@@ -154,7 +151,7 @@ pub fn filter_diagnostics(
     config: &ResolvedConfig,
 ) -> Vec<Diagnostic> {
     // Build ignore rule set
-    let ignored_rules: HashSet<&str> = config.ignore_rules.iter().map(|s| s.as_str()).collect();
+    let ignored_rules: HashSet<&str> = config.ignore_rules.iter().map(std::string::String::as_str).collect();
 
     // Build ignore file glob set
     let ignore_files_set = build_glob_set(&config.ignore_files);
@@ -190,7 +187,7 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
                 builder.add(glob);
             }
             Err(e) => {
-                eprintln!("Warning: invalid glob pattern '{}': {}", pattern, e);
+                eprintln!("Warning: invalid glob pattern '{pattern}': {e}");
             }
         }
     }
@@ -199,14 +196,22 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
 
 /// Count the number of .rs source files under a directory.
 pub fn count_source_files(root: &Path) -> usize {
-    count_rs_files_recursive(root)
+    collect_rs_files(root).len()
 }
 
-fn count_rs_files_recursive(dir: &Path) -> usize {
+/// Collect all `.rs` files recursively under a directory.
+/// Skips hidden dirs, target, vendor, and generated directories.
+/// Skips symlinks to prevent infinite loops.
+pub fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_rs_files_recursive(dir, &mut files);
+    files
+}
+
+fn collect_rs_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return 0;
+        return;
     };
-    let mut count = 0;
     for entry in entries.flatten() {
         let path = entry.path();
         // Use symlink_metadata to avoid following symlinks (prevents loops)
@@ -218,14 +223,12 @@ fn count_rs_files_recursive(dir: &Path) -> usize {
             // Skip hidden dirs, target, vendor, generated, and common non-source dirs
             if !name.starts_with('.') && name != "target" && name != "vendor" && name != "generated"
             {
-                count += count_rs_files_recursive(&path);
+                collect_rs_files_recursive(&path, files);
             }
         } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
-            count += 1;
+            files.push(path);
         }
-        // Symlinks are skipped (meta.is_symlink() would be true for non-dir/file entries)
     }
-    count
 }
 
 #[cfg(test)]
@@ -335,7 +338,7 @@ mod tests {
         fn name(&self) -> &str {
             "success"
         }
-        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, String> {
+        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
             Ok(self.diags.clone())
         }
     }
@@ -346,8 +349,11 @@ mod tests {
         fn name(&self) -> &str {
             "failing"
         }
-        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, String> {
-            Err("pass failed".to_string())
+        fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
+            Err(crate::error::PassError::Failed {
+                pass: "failing".to_string(),
+                message: "pass failed".to_string(),
+            })
         }
     }
 

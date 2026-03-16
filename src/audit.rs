@@ -17,18 +17,23 @@ pub struct AuditPass {
 }
 
 impl AnalysisPass for AuditPass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "dependencies (cargo-audit)"
     }
 
-    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, String> {
+    fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_cargo_audit_available() {
             eprintln!(
                 "Info: Install cargo-audit for vulnerability scanning: cargo install cargo-audit"
             );
             return Ok(vec![]);
         }
-        run_audit(project_root, self.offline)
+        run_audit(project_root, self.offline).map_err(|message| {
+            crate::error::PassError::Failed {
+                pass: "dependencies (cargo-audit)".to_string(),
+                message,
+            }
+        })
     }
 }
 
@@ -173,7 +178,7 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
                         "{}: {} v{} — {} ({})",
                         advisory.id, warn.package.name, warn.package.version, advisory.title, kind
                     ),
-                    help: advisory.url.as_deref().map(|u| u.to_string()),
+                    help: advisory.url.as_deref().map(std::string::ToString::to_string),
                     line: None,
                     column: None,
                 });

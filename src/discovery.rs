@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 /// Detected framework or runtime in the project's dependencies.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Framework {
     Tokio,
     AsyncStd,
@@ -108,7 +108,12 @@ pub struct WorkspaceMember {
 /// `manifest_path` should point to the Cargo.toml file.
 /// If `offline` is true, passes `--offline` to cargo to prevent network access.
 /// Returns `Ok(ProjectInfo)` on success, or an error if cargo metadata fails.
-pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectInfo, String> {
+pub fn discover_project(
+    manifest_path: &Path,
+    offline: bool,
+) -> Result<ProjectInfo, crate::error::DiscoveryError> {
+    use crate::error::DiscoveryError;
+
     let mut cmd = MetadataCommand::new();
     cmd.manifest_path(manifest_path).no_deps();
     if offline {
@@ -116,7 +121,7 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
     }
     let metadata = cmd
         .exec()
-        .map_err(|e| format!("cargo metadata failed: {e}"))?;
+        .map_err(|source| DiscoveryError::CargoMetadata { source })?;
 
     let workspace_root = PathBuf::from(metadata.workspace_root.as_std_path());
     let members = metadata.workspace_packages();
@@ -124,12 +129,12 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
     let is_workspace = member_count > 1;
 
     // Use first workspace member as "primary" package
-    let primary = members.first().ok_or("No packages found in workspace")?;
+    let primary = members.first().ok_or(DiscoveryError::NoPackages)?;
 
     let name = primary.name.clone();
     let version = primary.version.to_string();
     let edition = primary.edition.as_str().to_string();
-    let rust_version = primary.rust_version.as_ref().map(|v| v.to_string());
+    let rust_version = primary.rust_version.as_ref().map(std::string::ToString::to_string);
 
     // Detect build script
     let has_build_script = primary
@@ -163,8 +168,7 @@ pub fn discover_project(manifest_path: &Path, offline: bool) -> Result<ProjectIn
             root_dir: PathBuf::from(
                 pkg.manifest_path
                     .parent()
-                    .map(|p| p.as_std_path())
-                    .unwrap_or(workspace_root.as_path()),
+                    .map_or(workspace_root.as_path(), cargo_metadata::camino::Utf8Path::as_std_path),
             ),
         })
         .collect();
@@ -190,7 +194,7 @@ fn detect_frameworks(dep_names: &HashSet<&str>) -> Vec<Framework> {
     let mut frameworks: Vec<Framework> = FRAMEWORK_MAP
         .iter()
         .filter(|(crate_name, _)| dep_names.contains(crate_name))
-        .map(|(_, framework)| framework.clone())
+        .map(|(_, framework)| *framework)
         .collect();
 
     // Prefix-based detection for embassy-* crates
@@ -396,7 +400,8 @@ mod tests {
         assert_eq!(info.member_count, 1);
         assert!(!info.has_build_script);
         assert!(!info.is_no_std);
-        assert!(info.frameworks.is_empty());
+        // rust-doctor depends on tokio (for MCP server)
+        assert!(info.frameworks.contains(&Framework::Tokio));
     }
 
     #[test]

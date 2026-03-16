@@ -28,7 +28,7 @@ fn has_cfg_test(attrs: &[Attribute]) -> bool {
 pub struct UnwrapInProduction;
 
 impl CustomRule for UnwrapInProduction {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "unwrap-in-production"
     }
     fn category(&self) -> Category {
@@ -102,7 +102,7 @@ impl<'ast> Visit<'ast> for UnwrapVisitor<'_> {
 pub struct PanicInLibrary;
 
 impl CustomRule for PanicInLibrary {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "panic-in-library"
     }
     fn category(&self) -> Category {
@@ -180,7 +180,7 @@ impl<'ast> Visit<'ast> for PanicVisitor<'_> {
 pub struct BoxDynErrorInPublicApi;
 
 impl CustomRule for BoxDynErrorInPublicApi {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "box-dyn-error-in-public-api"
     }
     fn category(&self) -> Category {
@@ -249,8 +249,7 @@ fn check_return_type_box_dyn_error(
             category: Category::ErrorHandling,
             severity: Severity::Warning,
             message: format!(
-                "Public function `{}` returns `Box<dyn Error>` — callers cannot match on error variants",
-                ident
+                "Public function `{ident}` returns `Box<dyn Error>` — callers cannot match on error variants"
             ),
             help: Some(
                 "Define a custom error enum with `thiserror` or use `anyhow::Error` for applications"
@@ -329,7 +328,7 @@ fn is_box_dyn_error(ty: &Type) -> bool {
 pub struct ResultUnitError;
 
 impl CustomRule for ResultUnitError {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "result-unit-error"
     }
     fn category(&self) -> Category {
@@ -408,8 +407,7 @@ fn check_result_unit_error(
             category: Category::ErrorHandling,
             severity: Severity::Warning,
             message: format!(
-                "Public function `{}` returns `Result<_, ()>` — callers have no error context",
-                ident
+                "Public function `{ident}` returns `Result<_, ()>` — callers have no error context"
             ),
             help: Some(
                 "Define a meaningful error type or use `anyhow::Error` for ad-hoc errors"

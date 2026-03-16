@@ -84,7 +84,7 @@ pub struct ScanResult {
     /// Health score (0–100).
     pub score: u32,
     /// Score label (e.g. "Great", "Needs work", "Critical").
-    pub score_label: String,
+    pub score_label: &'static str,
     /// Number of source files scanned.
     pub source_file_count: usize,
     /// Total scan duration.
@@ -164,7 +164,7 @@ mod tests {
         let result = ScanResult {
             diagnostics: vec![],
             score: 100,
-            score_label: "Great".to_string(),
+            score_label: "Great",
             source_file_count: 10,
             elapsed: Duration::from_millis(1500),
             skipped_passes: vec![],
