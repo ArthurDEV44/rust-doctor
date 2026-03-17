@@ -1,14 +1,17 @@
+#[cfg(feature = "mcp")]
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::Duration;
 
 /// Severity of a diagnostic finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "mcp", derive(JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Error,
     Warning,
+    Info,
 }
 
 impl std::fmt::Display for Severity {
@@ -16,12 +19,14 @@ impl std::fmt::Display for Severity {
         match self {
             Self::Error => write!(f, "error"),
             Self::Warning => write!(f, "warning"),
+            Self::Info => write!(f, "info"),
         }
     }
 }
 
 /// Category of a diagnostic rule.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "mcp", derive(JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum Category {
     ErrorHandling,
@@ -54,7 +59,8 @@ impl std::fmt::Display for Category {
 }
 
 /// A single diagnostic finding from an analysis pass.
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "mcp", derive(JsonSchema))]
 pub struct Diagnostic {
     /// Path to the source file (relative to project root).
     pub file_path: PathBuf,
@@ -77,6 +83,28 @@ pub struct Diagnostic {
     pub column: Option<u32>,
 }
 
+/// Human-readable health assessment label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "mcp", derive(JsonSchema))]
+pub enum ScoreLabel {
+    #[serde(rename = "Great")]
+    Great,
+    #[serde(rename = "Needs work")]
+    NeedsWork,
+    #[serde(rename = "Critical")]
+    Critical,
+}
+
+impl std::fmt::Display for ScoreLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Great => write!(f, "Great"),
+            Self::NeedsWork => write!(f, "Needs work"),
+            Self::Critical => write!(f, "Critical"),
+        }
+    }
+}
+
 /// Result of a complete scan across all analysis passes.
 #[derive(Debug, Serialize)]
 pub struct ScanResult {
@@ -84,8 +112,8 @@ pub struct ScanResult {
     pub diagnostics: Vec<Diagnostic>,
     /// Health score (0–100).
     pub score: u32,
-    /// Score label (e.g. "Great", "Needs work", "Critical").
-    pub score_label: &'static str,
+    /// Score label.
+    pub score_label: ScoreLabel,
     /// Number of source files scanned.
     pub source_file_count: usize,
     /// Total scan duration.
@@ -97,6 +125,8 @@ pub struct ScanResult {
     pub error_count: usize,
     /// Number of warnings found.
     pub warning_count: usize,
+    /// Number of info-severity findings.
+    pub info_count: usize,
 }
 
 fn serialize_duration<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
@@ -114,6 +144,7 @@ mod tests {
     fn test_severity_display() {
         assert_eq!(Severity::Error.to_string(), "error");
         assert_eq!(Severity::Warning.to_string(), "warning");
+        assert_eq!(Severity::Info.to_string(), "info");
     }
 
     #[test]
@@ -165,12 +196,13 @@ mod tests {
         let result = ScanResult {
             diagnostics: vec![],
             score: 100,
-            score_label: "Great",
+            score_label: ScoreLabel::Great,
             source_file_count: 10,
             elapsed: Duration::from_millis(1500),
             skipped_passes: vec![],
             error_count: 0,
             warning_count: 0,
+            info_count: 0,
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["score"], 100);

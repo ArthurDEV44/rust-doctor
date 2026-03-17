@@ -222,10 +222,7 @@ fn detect_no_std(pkg: &cargo_metadata::Package) -> bool {
         })
         .map(|t| t.src_path.as_std_path());
 
-    match src_path {
-        Some(path) => file_declares_no_std(path),
-        None => false,
-    }
+    src_path.is_some_and(file_declares_no_std)
 }
 
 /// Returns `true` if the file declares `#![no_std]` in its first 10 lines.
@@ -259,9 +256,10 @@ fn file_declares_no_std(path: &Path) -> bool {
 pub fn bootstrap_project(
     directory: &Path,
     offline: bool,
-) -> Result<(PathBuf, ProjectInfo, Option<crate::config::FileConfig>), crate::error::McpToolError> {
+) -> Result<(PathBuf, ProjectInfo, Option<crate::config::FileConfig>), crate::error::BootstrapError>
+{
     let target_dir = directory.canonicalize().map_err(|source| {
-        crate::error::McpToolError::InvalidDirectory {
+        crate::error::BootstrapError::InvalidDirectory {
             path: directory.display().to_string(),
             source,
         }
@@ -269,17 +267,21 @@ pub fn bootstrap_project(
 
     let cargo_toml = target_dir.join("Cargo.toml");
     if !cargo_toml.try_exists().unwrap_or(false) {
-        return Err(crate::error::McpToolError::NoCargo {
-            path: target_dir.clone(),
-        });
+        return Err(crate::error::BootstrapError::NoCargo { path: target_dir });
     }
 
     let project_info = discover_project(&cargo_toml, offline)?;
 
-    let file_config = crate::config::load_file_config(
+    let file_config = match crate::config::load_file_config(
         &project_info.root_dir,
         Some(&project_info.package_metadata),
-    );
+    ) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Warning: {e}\nUsing default configuration.");
+            None
+        }
+    };
 
     Ok((target_dir, project_info, file_config))
 }
@@ -336,37 +338,32 @@ mod tests {
 
     #[test]
     fn test_file_declares_no_std_true() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-no-std");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("lib.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "#![no_std]").unwrap();
         writeln!(f, "pub fn hello() {{}}").unwrap();
         drop(f);
 
         assert!(file_declares_no_std(&file_path));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_file_declares_no_std_false() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-std");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("lib.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "use std::io;").unwrap();
         writeln!(f, "pub fn hello() {{}}").unwrap();
         drop(f);
 
         assert!(!file_declares_no_std(&file_path));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_file_declares_no_std_with_comments() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-no-std-comments");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("lib.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "// Copyright 2026").unwrap();
         writeln!(f, "//! Crate documentation").unwrap();
@@ -375,14 +372,12 @@ mod tests {
         drop(f);
 
         assert!(file_declares_no_std(&file_path));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_file_declares_no_std_beyond_line_10() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-no-std-late");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("lib.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
         let mut f = File::create(&file_path).unwrap();
         for i in 1..=11 {
             writeln!(f, "// Line {i}").unwrap();
@@ -392,7 +387,6 @@ mod tests {
 
         // no_std is on line 12, beyond the 10-line scan window
         assert!(!file_declares_no_std(&file_path));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -410,15 +404,13 @@ mod tests {
 
     #[test]
     fn test_file_declares_no_std_with_internal_spaces() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-no-std-spaces");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("lib.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("lib.rs");
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "#![ no_std ]").unwrap();
         drop(f);
 
         assert!(file_declares_no_std(&file_path));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

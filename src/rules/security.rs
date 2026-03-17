@@ -63,6 +63,12 @@ impl CustomRule for HardcodedSecrets {
     fn severity(&self) -> Severity {
         Severity::Error
     }
+    fn description(&self) -> &'static str {
+        "Flags string literals assigned to variables named `api_key`, `password`, `token`, `secret`, etc. (length > 8 chars). Hardcoded secrets in source code can be extracted from compiled binaries or version control."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use environment variables, a secrets manager, or config files excluded from version control."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = SecretVisitor {
             path,
@@ -214,6 +220,12 @@ impl CustomRule for UnsafeBlockAudit {
     fn severity(&self) -> Severity {
         Severity::Warning
     }
+    fn description(&self) -> &'static str {
+        "Flags `unsafe {}` blocks and `unsafe fn` declarations. Unsafe code bypasses Rust's memory safety guarantees and must be carefully audited."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Verify the safety invariants are documented and correct. Consider safe abstractions or crates like `zerocopy` to eliminate unsafe."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         // Respect #![forbid(unsafe_code)] — if present, skip scanning
         for attr in &syntax.attrs {
@@ -291,6 +303,12 @@ impl CustomRule for SqlInjectionRisk {
     }
     fn severity(&self) -> Severity {
         Severity::Error
+    }
+    fn description(&self) -> &'static str {
+        "Flags `format!()` output passed to `.query()`, `.execute()`, or `.raw()` methods. String interpolation in SQL queries enables SQL injection attacks."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use parameterized queries (`$1`, `?`) provided by your database library (sqlx, diesel, sea-orm)."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = SqlVisitor {
@@ -481,13 +499,13 @@ mod tests {
     fn test_unsafe_block_detected() {
         let diags = check(
             &UnsafeBlockAudit,
-            r#"
+            r"
             fn main() {
                 unsafe {
                     std::ptr::null::<i32>().read();
                 }
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "unsafe-block-audit");
@@ -498,11 +516,11 @@ mod tests {
     fn test_unsafe_fn_detected() {
         let diags = check(
             &UnsafeBlockAudit,
-            r#"
+            r"
             unsafe fn dangerous() {
                 // ...
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("unsafe fn"));
@@ -512,10 +530,10 @@ mod tests {
     fn test_forbid_unsafe_code_skips_scan() {
         let diags = check(
             &UnsafeBlockAudit,
-            r#"
+            r"
             #![forbid(unsafe_code)]
             fn main() {}
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -524,11 +542,11 @@ mod tests {
     fn test_no_unsafe_no_findings() {
         let diags = check(
             &UnsafeBlockAudit,
-            r#"
+            r"
             fn main() {
                 let x = 42;
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }

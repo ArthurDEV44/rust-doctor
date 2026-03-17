@@ -1,4 +1,4 @@
-use rust_doctor::diagnostics::{Category, Diagnostic, ScanResult, Severity};
+use rust_doctor::diagnostics::{Category, Diagnostic, ScanResult, ScoreLabel, Severity};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -37,12 +37,13 @@ fn test_scan_result_empty_snapshot() {
     let result = ScanResult {
         diagnostics: vec![],
         score: 100,
-        score_label: "Great",
+        score_label: ScoreLabel::Great,
         source_file_count: 15,
         elapsed: Duration::from_millis(1234),
         skipped_passes: vec![],
         error_count: 0,
         warning_count: 0,
+        info_count: 0,
     };
     insta::assert_json_snapshot!("scan_result_empty", result);
 }
@@ -73,12 +74,13 @@ fn test_scan_result_with_findings_snapshot() {
             },
         ],
         score: 72,
-        score_label: "Needs work",
+        score_label: ScoreLabel::NeedsWork,
         source_file_count: 8,
         elapsed: Duration::from_millis(5678),
         skipped_passes: vec!["dependencies (cargo-audit)".to_string()],
         error_count: 1,
         warning_count: 1,
+        info_count: 0,
     };
     insta::assert_json_snapshot!("scan_result_with_findings", result);
 }
@@ -87,6 +89,14 @@ fn test_scan_result_with_findings_snapshot() {
 fn test_severity_variants_snapshot() {
     insta::assert_json_snapshot!("severity_error", Severity::Error);
     insta::assert_json_snapshot!("severity_warning", Severity::Warning);
+    insta::assert_json_snapshot!("severity_info", Severity::Info);
+}
+
+#[test]
+fn test_score_label_variants_snapshot() {
+    insta::assert_json_snapshot!("score_label_great", ScoreLabel::Great);
+    insta::assert_json_snapshot!("score_label_needs_work", ScoreLabel::NeedsWork);
+    insta::assert_json_snapshot!("score_label_critical", ScoreLabel::Critical);
 }
 
 #[test]

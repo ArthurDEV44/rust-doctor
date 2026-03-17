@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(long, conflicts_with_all = ["score", "json"])]
     pub mcp: bool,
 
+    /// Ignore the project's rust-doctor.toml config file
+    #[arg(long)]
+    pub no_project_config: bool,
+
     /// Scan only specific workspace members (comma-separated)
     #[arg(long, value_delimiter = ',', value_name = "NAMES", value_parser = parse_non_empty)]
     pub project: Vec<String>,
@@ -62,6 +66,8 @@ pub enum FailOn {
     Error,
     /// Exit 1 if any errors or warnings found
     Warning,
+    /// Exit 1 if any errors, warnings, or info findings found
+    Info,
     /// Always exit 0 (unless rust-doctor itself crashes)
     None,
 }
@@ -71,6 +77,7 @@ impl std::fmt::Display for FailOn {
         match self {
             Self::Error => write!(f, "error"),
             Self::Warning => write!(f, "warning"),
+            Self::Info => write!(f, "info"),
             Self::None => write!(f, "none"),
         }
     }

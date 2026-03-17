@@ -24,14 +24,20 @@ jobs:
       - name: Check
         run: cargo check
 
-      - name: Clippy
-        run: cargo clippy -- -D warnings
+      - name: Clippy (pedantic + nursery)
+        run: cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -D warnings
 
       - name: Format
         run: cargo fmt --check
 
       - name: Test
         run: cargo test
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Security audit
+        run: cargo audit
 
       - name: Publish dry-run
         run: cargo publish --dry-run

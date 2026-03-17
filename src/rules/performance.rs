@@ -1,5 +1,5 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
-use crate::rules::{has_cfg_test, has_test_attr, CustomRule};
+use crate::rules::{CustomRule, has_cfg_test, has_test_attr};
 use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
@@ -29,6 +29,12 @@ impl CustomRule for ExcessiveClone {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags `.clone()` calls that may indicate unnecessary heap allocations. Each clone copies the entire value, which is expensive for `String`, `Vec`, and other heap-allocated types."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use references (`&T`) or `Cow<T>` instead of cloning. Consider restructuring ownership to avoid the clone."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = CloneVisitor {
@@ -102,7 +108,13 @@ impl CustomRule for StringFromLiteral {
         Category::Performance
     }
     fn severity(&self) -> Severity {
-        Severity::Warning
+        Severity::Info
+    }
+    fn description(&self) -> &'static str {
+        "Flags `String::from(\"literal\")` and `\"literal\".to_string()`. These allocate on the heap when a `&str` reference might suffice."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use `&str` for function parameters and constants. Owned `String` is correct for struct fields, HashMap keys, error messages, and APIs requiring ownership."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = StringLiteralVisitor {
@@ -150,10 +162,14 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
                 file_path: self.path.to_path_buf(),
                 rule: "string-from-literal".to_string(),
                 category: Category::Performance,
-                severity: Severity::Warning,
-                message: r#""literal".to_string() creates a heap allocation"#.to_string(),
+                severity: Severity::Info,
+                message:
+                    r#""literal".to_string() allocates — consider &str if ownership is not needed"#
+                        .to_string(),
                 help: Some(
-                    "Use &str directly when possible, or use a const/static for reuse".to_string(),
+                    "Acceptable for struct fields, HashMap keys, and APIs requiring String. \
+                     Use &str for function parameters and constants."
+                        .to_string(),
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
@@ -182,10 +198,11 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
                     file_path: self.path.to_path_buf(),
                     rule: "string-from-literal".to_string(),
                     category: Category::Performance,
-                    severity: Severity::Warning,
-                    message: r#"String::from("literal") creates a heap allocation"#.to_string(),
+                    severity: Severity::Info,
+                    message: r#"String::from("literal") allocates — consider &str if ownership is not needed"#.to_string(),
                     help: Some(
-                        "Use &str directly when possible, or use a const/static for reuse"
+                        "Acceptable for struct fields, HashMap keys, and APIs requiring String. \
+                         Use &str for function parameters and constants."
                             .to_string(),
                     ),
                     line: Some(span.start().line as u32),
@@ -211,6 +228,12 @@ impl CustomRule for CollectThenIterate {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags `.collect::<Vec<_>>()` immediately followed by `.iter()`. This allocates a temporary vector unnecessarily since the original iterator could be used directly."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Remove the `.collect()` and chain the iterator operations directly."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = CollectIterVisitor {
@@ -278,6 +301,12 @@ impl CustomRule for LargeEnumVariant {
     fn severity(&self) -> Severity {
         Severity::Warning
     }
+    fn description(&self) -> &'static str {
+        "Flags enums where variants have significantly different sizes (>3x field count disparity). The enum's size equals its largest variant, wasting memory for smaller variants."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Box the large variant's data: `LargeVariant(Box<LargeData>)`."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
@@ -344,6 +373,12 @@ impl CustomRule for UnnecessaryAllocation {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags `Vec::new()` or `String::new()` inside loops. Each iteration allocates a new buffer, which is expensive."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Move the allocation outside the loop and use `.clear()` to reuse it."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = AllocVisitor {
@@ -447,14 +482,14 @@ mod tests {
         // 3+ clones in production code should trigger the rule
         let diags = check(
             &ExcessiveClone,
-            r#"
+            r"
             fn main() {
                 let x = vec![1, 2, 3];
                 let a = x.clone();
                 let b = x.clone();
                 let c = x.clone();
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 3);
         assert_eq!(diags[0].rule, "excessive-clone");
@@ -465,12 +500,12 @@ mod tests {
         // 1-2 clones are considered intentional and not reported
         let diags = check(
             &ExcessiveClone,
-            r#"
+            r"
             fn main() {
                 let x = vec![1, 2, 3];
                 let y = x.clone();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -479,7 +514,7 @@ mod tests {
     fn test_clone_in_test_code_ignored() {
         let diags = check(
             &ExcessiveClone,
-            r#"
+            r"
             #[test]
             fn test_something() {
                 let x = vec![1, 2, 3];
@@ -488,7 +523,7 @@ mod tests {
                 let c = x.clone();
                 let d = x.clone();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -497,7 +532,7 @@ mod tests {
     fn test_clone_in_cfg_test_module_ignored() {
         let diags = check(
             &ExcessiveClone,
-            r#"
+            r"
             #[cfg(test)]
             mod tests {
                 fn helper() {
@@ -507,7 +542,7 @@ mod tests {
                     let c = x.clone();
                 }
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -516,12 +551,12 @@ mod tests {
     fn test_clone_no_false_positive_on_other_methods() {
         let diags = check(
             &ExcessiveClone,
-            r#"
+            r"
             fn main() {
                 let x = vec![1, 2, 3];
                 let y = x.len();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -573,12 +608,12 @@ mod tests {
     fn test_to_string_on_variable_not_flagged() {
         let diags = check(
             &StringFromLiteral,
-            r#"
+            r"
             fn main() {
                 let x = 42;
                 let s = x.to_string();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -589,11 +624,11 @@ mod tests {
     fn test_collect_then_iter_detected() {
         let diags = check(
             &CollectThenIterate,
-            r#"
+            r"
             fn main() {
                 let v: Vec<i32> = (0..10).collect::<Vec<_>>().iter().map(|x| x + 1).collect();
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "collect-then-iterate");
@@ -603,11 +638,11 @@ mod tests {
     fn test_collect_without_iter_not_flagged() {
         let diags = check(
             &CollectThenIterate,
-            r#"
+            r"
             fn main() {
                 let v: Vec<i32> = (0..10).collect();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -618,7 +653,7 @@ mod tests {
     fn test_large_enum_variant_detected() {
         let diags = check(
             &LargeEnumVariant,
-            r#"
+            r"
             enum Message {
                 Quit,
                 Data {
@@ -626,7 +661,7 @@ mod tests {
                     e: i32, f: i32, g: i32, h: i32,
                 },
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "large-enum-variant");
@@ -636,13 +671,13 @@ mod tests {
     fn test_balanced_enum_not_flagged() {
         let diags = check(
             &LargeEnumVariant,
-            r#"
+            r"
             enum Color {
                 Red(u8),
                 Green(u8),
                 Blue(u8),
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -653,13 +688,13 @@ mod tests {
     fn test_vec_new_in_loop_detected() {
         let diags = check(
             &UnnecessaryAllocation,
-            r#"
+            r"
             fn main() {
                 for _ in 0..10 {
                     let v = Vec::new();
                 }
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "unnecessary-allocation");
@@ -669,11 +704,11 @@ mod tests {
     fn test_vec_new_outside_loop_not_flagged() {
         let diags = check(
             &UnnecessaryAllocation,
-            r#"
+            r"
             fn main() {
                 let v = Vec::new();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -682,13 +717,13 @@ mod tests {
     fn test_string_new_in_while_loop_detected() {
         let diags = check(
             &UnnecessaryAllocation,
-            r#"
+            r"
             fn main() {
                 while true {
                     let s = String::new();
                 }
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
     }

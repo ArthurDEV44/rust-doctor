@@ -1,5 +1,6 @@
 ---
 source: tests/snapshots.rs
+assertion_line: 85
 expression: result
 ---
 {
@@ -33,5 +34,6 @@ expression: result
     "dependencies (cargo-audit)"
   ],
   "error_count": 1,
-  "warning_count": 1
+  "warning_count": 1,
+  "info_count": 0
 }

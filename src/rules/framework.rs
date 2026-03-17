@@ -19,6 +19,12 @@ impl CustomRule for TokioMainMissing {
     fn severity(&self) -> Severity {
         Severity::Error
     }
+    fn description(&self) -> &'static str {
+        "Flags `async fn main()` without `#[tokio::main]` (or equivalent runtime attribute). Without it, the async runtime is not initialized and the program won't compile or will panic."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Add `#[tokio::main]` above `async fn main()`."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
         if filename != "main.rs" {
@@ -82,6 +88,12 @@ impl CustomRule for TokioSpawnWithoutMove {
     fn severity(&self) -> Severity {
         Severity::Error
     }
+    fn description(&self) -> &'static str {
+        "Flags `tokio::spawn(async { ... })` without the `move` keyword. Without `move`, the spawned task borrows from the enclosing scope, which often fails to compile due to lifetime requirements ('static bound on spawn)."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use `tokio::spawn(async move { ... })`."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = SpawnVisitor {
             path,
@@ -134,7 +146,7 @@ impl<'ast> Visit<'ast> for SpawnVisitor<'_> {
     }
 }
 
-fn is_non_move_async_block(expr: &syn::Expr) -> bool {
+const fn is_non_move_async_block(expr: &syn::Expr) -> bool {
     matches!(expr, syn::Expr::Async(ab) if ab.capture.is_none())
 }
 
@@ -162,6 +174,12 @@ impl CustomRule for AxumHandlerNotAsync {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags non-async handler functions in axum. Web framework handlers run on the async runtime and must not block."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Make the handler `async fn` and use async I/O operations."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
@@ -228,6 +246,12 @@ impl CustomRule for ActixBlockingHandler {
     fn severity(&self) -> Severity {
         Severity::Warning
     }
+    fn description(&self) -> &'static str {
+        "Flags blocking calls (`std::thread::sleep`, `std::fs::*`, `std::net::*`) in actix-web handler functions. Web framework handlers run on the async runtime and must not block."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use async equivalents (`tokio::time::sleep`, `tokio::fs::*`, `tokio::net::*`) or wrap blocking code in `actix_web::web::block()`."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = ActixVisitor {
             path,
@@ -243,6 +267,62 @@ struct ActixVisitor<'a> {
     path: &'a Path,
     diagnostics: Vec<Diagnostic>,
     in_handler: bool,
+}
+
+/// Blocking call patterns detected in actix-web handlers.
+/// Each entry is (path segments to match, help message).
+const ACTIX_BLOCKING_CALLS: &[(&[&str], &str)] = &[
+    (
+        &["std", "thread", "sleep"],
+        "Use `tokio::time::sleep` or wrap in `actix_web::web::block()`",
+    ),
+    (
+        &["std", "fs", "read_to_string"],
+        "Use `tokio::fs::read_to_string` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "write"],
+        "Use `tokio::fs::write` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "read"],
+        "Use `tokio::fs::read` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "create_dir_all"],
+        "Use `tokio::fs::create_dir_all` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "remove_file"],
+        "Use `tokio::fs::remove_file` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "File", "open"],
+        "Use `tokio::fs::File::open` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "fs", "File", "create"],
+        "Use `tokio::fs::File::create` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "net", "TcpStream", "connect"],
+        "Use `tokio::net::TcpStream::connect` or wrap in `web::block()`",
+    ),
+    (
+        &["std", "net", "TcpListener", "bind"],
+        "Use `tokio::net::TcpListener::bind` or wrap in `web::block()`",
+    ),
+];
+
+/// Short patterns (last 2 segments) for common blocking calls.
+const ACTIX_BLOCKING_SHORT: &[(&str, &str, &str)] = &[(
+    "thread",
+    "sleep",
+    "Use `tokio::time::sleep` or wrap in `actix_web::web::block()`",
+)];
+
+fn actix_segments_match(call: &[&str], pattern: &[&str]) -> bool {
+    call.len() >= pattern.len() && call.ends_with(pattern)
 }
 
 impl<'ast> Visit<'ast> for ActixVisitor<'_> {
@@ -267,23 +347,50 @@ impl<'ast> Visit<'ast> for ActixVisitor<'_> {
                 .collect();
             let seg_strs: Vec<&str> = segments.iter().map(std::string::String::as_str).collect();
 
-            if seg_strs.ends_with(&["thread", "sleep"])
-                || seg_strs.ends_with(&["std", "thread", "sleep"])
-            {
-                let span = func_path.path.span();
-                self.diagnostics.push(Diagnostic {
-                    file_path: self.path.to_path_buf(),
-                    rule: "actix-blocking-handler".to_string(),
-                    category: Category::Framework,
-                    severity: Severity::Warning,
-                    message: "Blocking call in actix-web handler".to_string(),
-                    help: Some(
-                        "Use `actix_web::web::block()` for blocking operations in handlers"
-                            .to_string(),
-                    ),
-                    line: Some(span.start().line as u32),
-                    column: Some(span.start().column as u32 + 1),
-                });
+            // Check full path patterns
+            let mut matched = false;
+            for (pattern, help) in ACTIX_BLOCKING_CALLS {
+                if actix_segments_match(&seg_strs, pattern) {
+                    let span = func_path.path.span();
+                    self.diagnostics.push(Diagnostic {
+                        file_path: self.path.to_path_buf(),
+                        rule: "actix-blocking-handler".to_string(),
+                        category: Category::Framework,
+                        severity: Severity::Warning,
+                        message: format!(
+                            "Blocking call `{}` in actix-web handler",
+                            segments.join("::")
+                        ),
+                        help: Some(help.to_string()),
+                        line: Some(span.start().line as u32),
+                        column: Some(span.start().column as u32 + 1),
+                    });
+                    matched = true;
+                    break;
+                }
+            }
+
+            // Check short patterns (last 2 segments) if no full match
+            if !matched && segments.len() >= 2 {
+                let last_two = &segments[segments.len() - 2..];
+                for (a, b, help) in ACTIX_BLOCKING_SHORT {
+                    if last_two[0] == *a && last_two[1] == *b {
+                        let span = func_path.path.span();
+                        self.diagnostics.push(Diagnostic {
+                            file_path: self.path.to_path_buf(),
+                            rule: "actix-blocking-handler".to_string(),
+                            category: Category::Framework,
+                            severity: Severity::Warning,
+                            message: format!(
+                                "Blocking call `{}` in actix-web handler",
+                                segments.join("::")
+                            ),
+                            help: Some(help.to_string()),
+                            line: Some(span.start().line as u32),
+                            column: Some(span.start().column as u32 + 1),
+                        });
+                    }
+                }
             }
         }
         syn::visit::visit_expr_call(self, i);
@@ -304,6 +411,17 @@ fn has_actix_extractor_params(sig: &syn::Signature) -> bool {
 }
 
 // ─── Convenience ────────────────────────────────────────────────────────────
+
+/// Return all framework rules regardless of detected frameworks.
+/// Used for rule documentation and metadata enumeration.
+pub fn all_rules() -> Vec<Box<dyn CustomRule>> {
+    vec![
+        Box::new(TokioMainMissing),
+        Box::new(TokioSpawnWithoutMove),
+        Box::new(AxumHandlerNotAsync),
+        Box::new(ActixBlockingHandler),
+    ]
+}
 
 pub fn rules_for_frameworks(frameworks: &[Framework]) -> Vec<Box<dyn CustomRule>> {
     let mut rules: Vec<Box<dyn CustomRule>> = Vec::new();
@@ -438,6 +556,39 @@ mod tests {
     }
 
     #[test]
+    fn test_actix_blocking_fs_in_handler() {
+        let diags = check(
+            &ActixBlockingHandler,
+            r#"
+            async fn index(info: web::Json<Info>) -> impl Responder {
+                let data = std::fs::read_to_string("config.toml");
+                "ok"
+            }
+            "#,
+            "test.rs",
+        );
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].rule, "actix-blocking-handler");
+        assert!(diags[0].message.contains("std::fs::read_to_string"));
+    }
+
+    #[test]
+    fn test_actix_blocking_net_in_handler() {
+        let diags = check(
+            &ActixBlockingHandler,
+            r#"
+            async fn index(info: web::Json<Info>) -> impl Responder {
+                let stream = std::net::TcpStream::connect("127.0.0.1:8080");
+                "ok"
+            }
+            "#,
+            "test.rs",
+        );
+        assert_eq!(diags.len(), 1);
+        assert!(diags[0].message.contains("std::net::TcpStream::connect"));
+    }
+
+    #[test]
     fn test_actix_non_handler_not_flagged() {
         let diags = check(
             &ActixBlockingHandler,
@@ -463,14 +614,12 @@ mod tests {
     #[test]
     fn test_axum_gets_handler_rule() {
         let rules = rules_for_frameworks(&[Framework::Axum]);
-        let names: Vec<&str> = rules.iter().map(|r| r.name()).collect();
-        assert!(names.contains(&"axum-handler-not-async"));
+        assert!(rules.iter().any(|r| r.name() == "axum-handler-not-async"));
     }
 
     #[test]
     fn test_actix_gets_blocking_rule() {
         let rules = rules_for_frameworks(&[Framework::ActixWeb]);
-        let names: Vec<&str> = rules.iter().map(|r| r.name()).collect();
-        assert!(names.contains(&"actix-blocking-handler"));
+        assert!(rules.iter().any(|r| r.name() == "actix-blocking-handler"));
     }
 }

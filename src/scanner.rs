@@ -118,6 +118,10 @@ impl ScanOrchestrator {
     }
 
     /// Run all passes in parallel using std::thread::scope.
+    #[expect(
+        clippy::needless_collect,
+        reason = "handles must be collected before joining"
+    )]
     fn run_passes_parallel(&self, project_root: &Path) -> Vec<PassResult> {
         std::thread::scope(|s| {
             let handles: Vec<_> = self
@@ -134,14 +138,18 @@ impl ScanOrchestrator {
             handles
                 .into_iter()
                 .enumerate()
-                .map(|(i, h)| if let Ok((name, result)) = h.join() { PassResult { name, result } } else {
-                    let name = pass_names
-                        .get(i)
-                        .cloned()
-                        .unwrap_or_else(|| "<unknown>".to_string());
-                    PassResult {
-                        name: name.clone(),
-                        result: Err(crate::error::PassError::Panicked { pass: name }),
+                .map(|(i, h)| {
+                    if let Ok((name, result)) = h.join() {
+                        PassResult { name, result }
+                    } else {
+                        let name = pass_names
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| "<unknown>".to_string());
+                        PassResult {
+                            name: name.clone(),
+                            result: Err(crate::error::PassError::Panicked { pass: name }),
+                        }
                     }
                 })
                 .collect()
@@ -155,7 +163,11 @@ pub fn filter_diagnostics(
     config: &ResolvedConfig,
 ) -> Vec<Diagnostic> {
     // Build ignore rule set
-    let ignored_rules: HashSet<&str> = config.ignore_rules.iter().map(std::string::String::as_str).collect();
+    let ignored_rules: HashSet<&str> = config
+        .ignore_rules
+        .iter()
+        .map(std::string::String::as_str)
+        .collect();
 
     // Build ignore file glob set
     let ignore_files_set = build_glob_set(&config.ignore_files);
@@ -181,11 +193,34 @@ pub fn filter_diagnostics(
         .collect()
 }
 
+/// Maximum number of glob patterns allowed in config.
+const MAX_GLOB_PATTERNS: usize = 100;
+/// Maximum length of a single glob pattern.
+const MAX_GLOB_PATTERN_LEN: usize = 256;
+
 /// Build a GlobSet from a list of pattern strings.
+/// Caps patterns at 100 and individual pattern length at 256 chars.
 /// Returns an error if any pattern is invalid.
 pub fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
     let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
+
+    if patterns.len() > MAX_GLOB_PATTERNS {
+        eprintln!(
+            "Warning: too many glob patterns ({}, max {}); truncating",
+            patterns.len(),
+            MAX_GLOB_PATTERNS
+        );
+    }
+
+    for pattern in patterns.iter().take(MAX_GLOB_PATTERNS) {
+        if pattern.len() > MAX_GLOB_PATTERN_LEN {
+            eprintln!(
+                "Warning: glob pattern too long ({} chars, max {}); skipping",
+                pattern.len(),
+                MAX_GLOB_PATTERN_LEN
+            );
+            continue;
+        }
         match Glob::new(pattern) {
             Ok(glob) => {
                 builder.add(glob);
@@ -238,6 +273,10 @@ pub fn collect_rs_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// Maximum file size to parse (10 MB). Files larger than this are skipped
+/// to prevent out-of-memory crashes from pathologically large `.rs` files.
+const MAX_RS_FILE_SIZE: u64 = 10 * 1024 * 1024;
+
 fn collect_rs_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -256,7 +295,15 @@ fn collect_rs_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) {
                 collect_rs_files_recursive(&path, files);
             }
         } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
-            files.push(path);
+            if meta.len() > MAX_RS_FILE_SIZE {
+                eprintln!(
+                    "Warning: skipping oversized file {} ({} bytes)",
+                    path.display(),
+                    meta.len()
+                );
+            } else {
+                files.push(path);
+            }
         }
     }
 }
@@ -365,7 +412,7 @@ mod tests {
     }
 
     impl AnalysisPass for SuccessPass {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "success"
         }
         fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
@@ -376,7 +423,7 @@ mod tests {
     struct FailingPass;
 
     impl AnalysisPass for FailingPass {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "failing"
         }
         fn run(&self, _root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {

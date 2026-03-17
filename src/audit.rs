@@ -28,23 +28,25 @@ impl AnalysisPass for AuditPass {
                 reason: "cargo-audit is not installed".to_string(),
             });
         }
-        run_audit(project_root, self.offline).map_err(|message| {
-            crate::error::PassError::Failed {
-                pass: "dependencies (cargo-audit)".to_string(),
-                message,
-            }
+        run_audit(project_root, self.offline).map_err(|message| crate::error::PassError::Failed {
+            pass: "dependencies (cargo-audit)".to_string(),
+            message,
         })
     }
 }
 
+/// Check if `cargo audit` is available. Result is cached for the process lifetime.
 fn is_cargo_audit_available() -> bool {
-    Command::new("cargo")
-        .args(["audit", "--version"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("cargo")
+            .args(["audit", "--version"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
 }
 
 fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, String> {
@@ -135,7 +137,10 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
                         "{}: {} v{} — {} ({})",
                         advisory.id, warn.package.name, warn.package.version, advisory.title, kind
                     ),
-                    help: advisory.url.as_deref().map(std::string::ToString::to_string),
+                    help: advisory
+                        .url
+                        .as_deref()
+                        .map(std::string::ToString::to_string),
                     line: None,
                     column: None,
                 });
@@ -260,8 +265,8 @@ mod tests {
             id: "TEST-001".into(),
             title: "Test".into(),
             url: None,
-            cvss: cvss.map(|s| s.to_string()),
-            severity: severity.map(|s| s.to_string()),
+            cvss: cvss.map(std::string::ToString::to_string),
+            severity: severity.map(std::string::ToString::to_string),
         }
     }
 
@@ -372,13 +377,11 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "depends on optional external tool cargo-audit"]
     fn test_cargo_audit_availability() {
-        // This test is informational — cargo-audit may or may not be installed
-        let available = is_cargo_audit_available();
-        if available {
-            eprintln!("cargo-audit is available");
-        } else {
-            eprintln!("cargo-audit is NOT installed (test passes either way)");
-        }
+        assert!(
+            is_cargo_audit_available(),
+            "cargo-audit should be installed for this test"
+        );
     }
 }

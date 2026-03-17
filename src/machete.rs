@@ -32,14 +32,18 @@ impl AnalysisPass for MachetePass {
     }
 }
 
+/// Check if `cargo machete` is available. Result is cached for the process lifetime.
 fn is_machete_available() -> bool {
-    Command::new("cargo")
-        .args(["machete", "--version"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("cargo")
+            .args(["machete", "--version"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
 }
 
 fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
@@ -122,12 +126,12 @@ mod tests {
 
     #[test]
     fn test_parse_single_package() {
-        let output = r#"cargo-machete found the following unused dependencies in /tmp/project:
+        let output = r"cargo-machete found the following unused dependencies in /tmp/project:
 
 my-crate -- /tmp/project/Cargo.toml:
 	serde
 	tokio
-"#;
+";
         let diags = parse_machete_output(output);
         assert_eq!(diags.len(), 2);
         assert_eq!(diags[0].rule, "unused-dependency");
@@ -139,7 +143,7 @@ my-crate -- /tmp/project/Cargo.toml:
 
     #[test]
     fn test_parse_multiple_packages() {
-        let output = r#"cargo-machete found the following unused dependencies in /tmp/workspace:
+        let output = r"cargo-machete found the following unused dependencies in /tmp/workspace:
 
 crate-a -- /tmp/workspace/crate-a/Cargo.toml:
 	unused-dep
@@ -147,7 +151,7 @@ crate-a -- /tmp/workspace/crate-a/Cargo.toml:
 crate-b -- /tmp/workspace/crate-b/Cargo.toml:
 	another-unused
 	yet-another
-"#;
+";
         let diags = parse_machete_output(output);
         assert_eq!(diags.len(), 3);
         assert_eq!(
@@ -187,13 +191,11 @@ crate-b -- /tmp/workspace/crate-b/Cargo.toml:
     }
 
     #[test]
+    #[ignore = "depends on optional external tool cargo-machete"]
     fn test_machete_availability() {
-        // Informational — may or may not be installed
-        let available = is_machete_available();
-        if available {
-            eprintln!("cargo-machete is available");
-        } else {
-            eprintln!("cargo-machete is NOT installed (test passes either way)");
-        }
+        assert!(
+            is_machete_available(),
+            "cargo-machete should be installed for this test"
+        );
     }
 }

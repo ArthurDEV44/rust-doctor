@@ -1,10 +1,18 @@
-use crate::diagnostics::Diagnostic;
-use crate::{clippy, config, discovery, scan};
+use crate::diagnostics::{Diagnostic, ScoreLabel};
+use crate::{clippy, config, discovery, rules, scan};
+use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
-use rmcp::model::{CallToolResult, Content, ServerInfo, ServerCapabilities};
-use rmcp::service::ServiceExt;
-use rmcp::{tool, tool_router, ErrorData as McpError};
+use rmcp::model::{
+    AnnotateAble, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
+    ListPromptsResult, ListResourcesResult, PaginatedRequestParams, PromptMessage,
+    PromptMessageRole, RawResource, ReadResourceRequestParams, ReadResourceResult, Resource,
+    ResourceContents, ServerCapabilities, ServerInfo,
+};
+use rmcp::service::{RequestContext, ServiceExt};
+use rmcp::{
+    ErrorData as McpError, RoleServer, prompt, prompt_handler, prompt_router, tool, tool_router,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -16,6 +24,7 @@ use std::path::Path;
 #[derive(Clone)]
 pub struct RustDoctorServer {
     tool_router: ToolRouter<Self>,
+    prompt_router: PromptRouter<Self>,
 }
 
 // ---------------------------------------------------------------------------
@@ -25,25 +34,49 @@ pub struct RustDoctorServer {
 #[derive(Deserialize, Serialize, JsonSchema)]
 pub struct ScanInput {
     /// Absolute path to the Rust project directory (must contain a Cargo.toml).
-    #[schemars(description = "Absolute path to the Rust project directory to analyze. Must contain a Cargo.toml file.")]
+    #[schemars(
+        description = "Absolute path to the Rust project directory to analyze. Must contain a Cargo.toml file."
+    )]
     pub directory: String,
     /// Only scan files changed vs this base branch (e.g. "main"). Omit to scan all files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(description = "Git branch name to diff against (e.g. 'main', 'develop'). When set, only files changed vs this branch are scanned. Omit to scan all files.")]
+    #[schemars(
+        description = "Git branch name to diff against (e.g. 'main', 'develop'). When set, only files changed vs this branch are scanned. Omit to scan all files."
+    )]
     pub diff: Option<String>,
+    /// Run in offline mode (no network fetches). Defaults to true in MCP mode for security.
+    #[serde(default = "default_mcp_offline")]
+    #[schemars(
+        description = "When true, cargo-audit runs with --no-fetch (no network access). Defaults to true in MCP mode for security."
+    )]
+    pub offline: bool,
+    /// Ignore the project's rust-doctor.toml config file.
+    #[serde(default)]
+    #[schemars(
+        description = "When true, ignores the project's rust-doctor.toml config file. Useful for untrusted projects."
+    )]
+    pub ignore_project_config: bool,
+}
+
+const fn default_mcp_offline() -> bool {
+    true
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 pub struct ScoreInput {
     /// Absolute path to the Rust project directory.
-    #[schemars(description = "Absolute path to the Rust project directory to score. Must contain a Cargo.toml file.")]
+    #[schemars(
+        description = "Absolute path to the Rust project directory to score. Must contain a Cargo.toml file."
+    )]
     pub directory: String,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
 pub struct ExplainRuleInput {
     /// The rule ID (e.g. "unwrap-in-production", "clippy::expect_used", "blocking-in-async").
-    #[schemars(description = "Rule identifier to explain. Accepts custom rule IDs (e.g. 'unwrap-in-production') or clippy lint names (e.g. 'clippy::expect_used'). Use list_rules to discover available IDs.")]
+    #[schemars(
+        description = "Rule identifier to explain. Accepts custom rule IDs (e.g. 'unwrap-in-production') or clippy lint names (e.g. 'clippy::expect_used'). Use list_rules to discover available IDs."
+    )]
     pub rule: String,
 }
 
@@ -58,8 +91,8 @@ pub struct ScanOutput {
     pub diagnostics: Vec<Diagnostic>,
     /// Health score from 0 (critical) to 100 (perfect).
     pub score: u32,
-    /// Human-readable score label: "Great", "Needs work", or "Critical".
-    pub score_label: String,
+    /// Human-readable score label.
+    pub score_label: ScoreLabel,
     /// Number of source files that were analyzed.
     pub source_file_count: usize,
     /// Total scan duration in seconds.
@@ -70,6 +103,8 @@ pub struct ScanOutput {
     pub error_count: usize,
     /// Total number of warning-severity findings.
     pub warning_count: usize,
+    /// Total number of info-severity findings.
+    pub info_count: usize,
 }
 
 /// Structured output for the score tool.
@@ -77,8 +112,8 @@ pub struct ScanOutput {
 pub struct ScoreOutput {
     /// Health score from 0 (critical) to 100 (perfect).
     pub score: u32,
-    /// Human-readable score label: "Great", "Needs work", or "Critical".
-    pub score_label: String,
+    /// Human-readable score label.
+    pub score_label: ScoreLabel,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,10 +121,12 @@ pub struct ScoreOutput {
 // ---------------------------------------------------------------------------
 
 #[tool_router]
+#[prompt_router]
 impl RustDoctorServer {
     fn new() -> Self {
         Self {
             tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
         }
     }
 
@@ -99,32 +136,90 @@ impl RustDoctorServer {
 Use this tool when you need detailed diagnostics — it returns all findings with file:line precision. \
 Takes 5-30 seconds depending on project size. \
 Returns JSON with: diagnostics array (each has rule, severity, message, file_path, line, column, help), \
-score (0-100), score_label, source_file_count, elapsed_secs, error_count, warning_count, skipped_passes. \
+score (0-100), score_label, source_file_count, elapsed_secs, error_count, warning_count, info_count, skipped_passes. \
+Severity levels: error (bugs/security), warning (code smells), info (suggestions). \
 Runs 4 passes in parallel: clippy (55+ lints), 18 custom AST rules, cargo-audit (CVEs), cargo-machete (unused deps). \
 Set 'diff' to a branch name to only scan changed files. \
 After scanning, use explain_rule on any rule ID to get fix guidance.",
         annotations(read_only_hint = true)
     )]
-    async fn scan(&self, params: Parameters<ScanInput>) -> Result<Json<ScanOutput>, McpError> {
+    async fn scan(
+        &self,
+        meta: rmcp::model::Meta,
+        client: rmcp::Peer<RoleServer>,
+        params: Parameters<ScanInput>,
+    ) -> Result<Json<ScanOutput>, McpError> {
         let input = params.0;
-        let (_dir, project_info, mut resolved) = discover_and_resolve(&input.directory)?;
+        let progress_token = meta.get_progress_token();
+
+        // Send start progress if client supports it
+        if let Some(ref token) = progress_token {
+            let _ = client
+                .notify_progress(rmcp::model::ProgressNotificationParam {
+                    progress_token: token.clone(),
+                    progress: 0.0,
+                    total: Some(2.0),
+                    message: Some("Bootstrapping project...".to_string()),
+                })
+                .await;
+        }
+
+        let (_dir, project_info, mut resolved) =
+            discover_and_resolve(&input.directory, input.ignore_project_config)?;
 
         if let Some(diff_base) = input.diff {
             resolved.diff = Some(diff_base);
         }
 
-        let result = scan::scan_project(&project_info, &resolved, false, &[], true)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        // Send scanning progress
+        if let Some(ref token) = progress_token {
+            let _ = client
+                .notify_progress(rmcp::model::ProgressNotificationParam {
+                    progress_token: token.clone(),
+                    progress: 1.0,
+                    total: Some(2.0),
+                    message: Some(
+                        "Running analysis passes (clippy, rules, audit, machete)...".to_string(),
+                    ),
+                })
+                .await;
+        }
+
+        // Run the CPU-bound scan on a blocking thread to avoid starving the tokio runtime
+        let offline = input.offline;
+        let result = tokio::task::spawn_blocking(move || {
+            scan::scan_project(&project_info, &resolved, offline, &[], true)
+        })
+        .await
+        .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+        // Send completion progress
+        if let Some(ref token) = progress_token {
+            let _ = client
+                .notify_progress(rmcp::model::ProgressNotificationParam {
+                    progress_token: token.clone(),
+                    progress: 2.0,
+                    total: Some(2.0),
+                    message: Some(format!(
+                        "Scan complete: score {}/100, {} findings",
+                        result.score,
+                        result.diagnostics.len()
+                    )),
+                })
+                .await;
+        }
 
         Ok(Json(ScanOutput {
             diagnostics: result.diagnostics,
             score: result.score,
-            score_label: result.score_label.to_string(),
+            score_label: result.score_label,
             source_file_count: result.source_file_count,
             elapsed_secs: result.elapsed.as_secs_f64(),
             skipped_passes: result.skipped_passes,
             error_count: result.error_count,
             warning_count: result.warning_count,
+            info_count: result.info_count,
         }))
     }
 
@@ -140,14 +235,19 @@ If you also need the diagnostics, use scan instead — it includes the score too
     )]
     async fn score(&self, params: Parameters<ScoreInput>) -> Result<Json<ScoreOutput>, McpError> {
         let input = params.0;
-        let (_dir, project_info, resolved) = discover_and_resolve(&input.directory)?;
+        let (_dir, project_info, resolved) = discover_and_resolve(&input.directory, false)?;
 
-        let result = scan::scan_project(&project_info, &resolved, false, &[], true)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        // Run the CPU-bound scan on a blocking thread to avoid starving the tokio runtime
+        let result = tokio::task::spawn_blocking(move || {
+            scan::scan_project(&project_info, &resolved, false, &[], true)
+        })
+        .await
+        .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         Ok(Json(ScoreOutput {
             score: result.score,
-            score_label: result.score_label.to_string(),
+            score_label: result.score_label,
         }))
     }
 
@@ -183,6 +283,35 @@ Each entry shows rule ID, severity, and one-line summary.",
         let listing = get_all_rules_listing();
         Ok(CallToolResult::success(vec![Content::text(listing)]))
     }
+
+    // ── Prompts ──────────────────────────────────────────────────────────
+
+    #[prompt(
+        name = "health-check",
+        description = "Run a full health check on a Rust project and explain the top issues. \
+Combines scan + explain_rule into one workflow."
+    )]
+    async fn health_check(&self, params: Parameters<HealthCheckArgs>) -> GetPromptResult {
+        GetPromptResult::new(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            format!(
+                "Run a full health analysis on the Rust project at '{}'. \
+                 First use the `scan` tool to get all diagnostics and the health score. \
+                 Then for each error-severity finding, use `explain_rule` to get fix guidance. \
+                 Summarize: (1) overall score and label, (2) top issues grouped by category, \
+                 (3) actionable fix steps for each error, (4) quick wins for warnings.",
+                params.0.directory
+            ),
+        )])
+        .with_description("Comprehensive Rust project health check with fix guidance")
+    }
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
+pub struct HealthCheckArgs {
+    /// Absolute path to the Rust project directory.
+    #[schemars(description = "Absolute path to the Rust project directory to check.")]
+    pub directory: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -190,23 +319,76 @@ Each entry shows rule ID, severity, and one-line summary.",
 // ---------------------------------------------------------------------------
 
 #[rmcp::tool_handler]
+#[prompt_handler(router = self.prompt_router)]
 impl rmcp::handler::server::ServerHandler for RustDoctorServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(
-                "rust-doctor is a Rust code health scanner. It analyzes projects for security, \
-                 performance, correctness, architecture, and dependency issues.\n\n\
-                 ## Recommended workflow\n\
-                 1. `scan` a project directory → get diagnostics + score (5-30s)\n\
-                 2. `explain_rule` for any rule you want to understand → instant\n\
-                 3. `list_rules` to browse all available checks → instant\n\
-                 4. `score` for a quick pass/fail without diagnostics (same 5-30s as scan)\n\n\
-                 ## Tips\n\
-                 - Prefer `scan` over `score` — it includes the score plus full diagnostics\n\
-                 - Use `diff` parameter in scan to focus on changed files only\n\
-                 - All tools are read-only and safe to call repeatedly\n\
-                 - `explain_rule` and `list_rules` are instant (no project scanning)",
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .build(),
+        )
+        .with_instructions(
+            "rust-doctor is a Rust code health scanner. It analyzes projects for security, \
+             performance, correctness, architecture, and dependency issues.\n\n\
+             ## Recommended workflow\n\
+             1. `scan` a project directory → get diagnostics + score (5-30s)\n\
+             2. `explain_rule` for any rule you want to understand → instant\n\
+             3. `list_rules` to browse all available checks → instant\n\
+             4. `score` for a quick pass/fail without diagnostics (same 5-30s as scan)\n\n\
+             ## Resources\n\
+             - `rule://` — read rule documentation by URI (e.g. `rule://unwrap-in-production`)\n\n\
+             ## Prompts\n\
+             - `health-check` — full health check workflow with fix guidance\n\n\
+             ## Tips\n\
+             - Prefer `scan` over `score` — it includes the score plus full diagnostics\n\
+             - Use `diff` parameter in scan to focus on changed files only\n\
+             - All tools are read-only and safe to call repeatedly\n\
+             - `explain_rule` and `list_rules` are instant (no project scanning)",
+        )
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let docs = build_rule_docs();
+        let resources: Vec<Resource> = docs
+            .iter()
+            .map(|doc| {
+                RawResource::new(format!("rule://{}", doc.name), &doc.name)
+                    .with_description(format!("[{}] {}", doc.severity, doc.description))
+                    .with_mime_type("text/markdown")
+                    .no_annotation()
+            })
+            .collect();
+
+        Ok(ListResourcesResult {
+            resources,
+            next_cursor: None,
+            meta: None,
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        let uri = request.uri.as_str();
+        let rule_name = uri.strip_prefix("rule://").ok_or_else(|| {
+            McpError::invalid_params(
+                format!("Unknown URI scheme: {uri}. Expected rule://{{rule-name}}"),
+                None,
             )
+        })?;
+
+        let explanation = get_rule_explanation(rule_name);
+        Ok(ReadResourceResult::new(vec![
+            ResourceContents::text(explanation, uri).with_mime_type("text/markdown"),
+        ]))
     }
 }
 
@@ -215,14 +397,20 @@ impl rmcp::handler::server::ServerHandler for RustDoctorServer {
 // ---------------------------------------------------------------------------
 
 /// Run the MCP server over stdio. Called from main when `--mcp` is passed.
-pub fn run_mcp_server() {
-    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+///
+/// # Errors
+///
+/// Returns an error if the tokio runtime cannot be created, the MCP transport
+/// fails to initialize, or the server encounters a fatal error.
+pub fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
+    let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let server = RustDoctorServer::new();
         let transport = rmcp::transport::io::stdio();
-        let service = server.serve(transport).await.expect("MCP server failed");
-        service.waiting().await.expect("MCP server error");
-    });
+        let service = server.serve(transport).await?;
+        service.waiting().await?;
+        Ok(())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +418,10 @@ pub fn run_mcp_server() {
 // ---------------------------------------------------------------------------
 
 /// Discover project + load file config + resolve with defaults.
+/// Validates that the directory is under `$HOME` to prevent scanning arbitrary paths.
 fn discover_and_resolve(
     directory: &str,
+    ignore_project_config: bool,
 ) -> Result<
     (
         std::path::PathBuf,
@@ -240,164 +430,97 @@ fn discover_and_resolve(
     ),
     McpError,
 > {
-    let (target_dir, project_info, file_config) =
-        discovery::bootstrap_project(Path::new(directory), false)
-            .map_err(|e| McpError::invalid_params(e.to_string(), None))?;
+    // Validate directory scope: must be under $HOME
+    let canonical = std::path::Path::new(directory)
+        .canonicalize()
+        .map_err(|_| {
+            McpError::invalid_params("directory path is invalid or does not exist", None)
+        })?;
 
-    let resolved = config::resolve_config_defaults(file_config.as_ref());
+    if let Ok(home) = std::env::var("HOME") {
+        let home_path = std::path::Path::new(&home);
+        if let Ok(home_canonical) = home_path.canonicalize() {
+            if !canonical.starts_with(&home_canonical) {
+                return Err(McpError::invalid_params(
+                    "directory must be under $HOME",
+                    None,
+                ));
+            }
+        }
+    } else {
+        eprintln!("Warning: $HOME not set, skipping directory scope validation");
+    }
+
+    let (target_dir, project_info, file_config) =
+        discovery::bootstrap_project(Path::new(directory), false).map_err(|e| {
+            // Sanitize: return a hint but NOT the raw error text (which may contain paths)
+            let hint = match &e {
+                crate::error::BootstrapError::InvalidDirectory { .. } => {
+                    "invalid directory — use an absolute path like /home/user/project"
+                }
+                crate::error::BootstrapError::NoCargo { .. } => {
+                    "no Cargo.toml found — ensure the directory contains a Cargo.toml"
+                }
+                crate::error::BootstrapError::Discovery(_) => {
+                    "project discovery failed — check that `cargo metadata` runs successfully"
+                }
+            };
+            eprintln!("MCP bootstrap error: {e}");
+            McpError::invalid_params(hint.to_string(), None)
+        })?;
+
+    let effective_config = if ignore_project_config {
+        None
+    } else {
+        // Warn if security rules are suppressed by project config
+        if let Some(ref fc) = file_config {
+            let security_rules = [
+                "hardcoded-secrets",
+                "sql-injection-risk",
+                "unsafe-block-audit",
+            ];
+            for rule in &fc.ignore.rules {
+                if security_rules.contains(&rule.as_str()) {
+                    eprintln!("Warning: project config suppresses security rule '{rule}'");
+                }
+            }
+        }
+        file_config.as_ref()
+    };
+    let resolved = config::resolve_config_defaults(effective_config);
 
     Ok((target_dir, project_info, resolved))
 }
 
 // ---------------------------------------------------------------------------
-// Rule knowledge base (data-driven)
+// Rule knowledge base (derived from trait implementations at runtime)
 // ---------------------------------------------------------------------------
 
 struct RuleDoc {
-    name: &'static str,
-    category: &'static str,
-    severity: &'static str,
-    description: &'static str,
-    fix: &'static str,
+    name: String,
+    category: String,
+    severity: String,
+    description: String,
+    fix: String,
 }
 
-static RULE_DOCS: &[RuleDoc] = &[
-    // ── Error Handling ──────────────────────────────────────────
-    RuleDoc {
-        name: "unwrap-in-production",
-        category: "Error Handling",
-        severity: "Warning",
-        description: "Flags `.unwrap()` and `.expect()` calls outside of test code. These calls panic at runtime if the value is `None` or `Err`, crashing your application.",
-        fix: "Use the `?` operator to propagate errors, or handle them with `match`, `if let`, `.unwrap_or()`, or `.unwrap_or_else()`.",
-    },
-    RuleDoc {
-        name: "panic-in-library",
-        category: "Error Handling",
-        severity: "Error",
-        description: "Flags `panic!()`, `todo!()`, and `unimplemented!()` macros in library code. Libraries should return errors rather than panicking, since callers cannot recover from a panic across crate boundaries.",
-        fix: "Return `Result<T, E>` or `Option<T>` instead of panicking.",
-    },
-    RuleDoc {
-        name: "box-dyn-error-in-public-api",
-        category: "Error Handling",
-        severity: "Warning",
-        description: "Flags `pub fn` returning `Result<_, Box<dyn Error>>`. This erases error type information, making it impossible for callers to match on specific error variants.",
-        fix: "Define a custom error enum with `thiserror` or return a concrete error type.",
-    },
-    RuleDoc {
-        name: "result-unit-error",
-        category: "Error Handling",
-        severity: "Warning",
-        description: "Flags `pub fn` returning `Result<_, ()>`. A unit error carries no information about what went wrong.",
-        fix: "Use a meaningful error type that describes the failure.",
-    },
-    // ── Performance ─────────────────────────────────────────────
-    RuleDoc {
-        name: "excessive-clone",
-        category: "Performance",
-        severity: "Warning",
-        description: "Flags `.clone()` calls that may indicate unnecessary heap allocations. Each clone copies the entire value, which is expensive for `String`, `Vec`, and other heap-allocated types.",
-        fix: "Use references (`&T`) or `Cow<T>` instead of cloning. Consider restructuring ownership to avoid the clone.",
-    },
-    RuleDoc {
-        name: "string-from-literal",
-        category: "Performance",
-        severity: "Warning",
-        description: "Flags `String::from(\"literal\")` and `\"literal\".to_string()`. While not wrong, these allocate on the heap when a `&str` reference might suffice.",
-        fix: "If the function accepts `&str`, pass the literal directly. If you need an owned `String`, this warning can be safely ignored or suppressed.",
-    },
-    RuleDoc {
-        name: "collect-then-iterate",
-        category: "Performance",
-        severity: "Warning",
-        description: "Flags `.collect::<Vec<_>>()` immediately followed by `.iter()`. This allocates a temporary vector unnecessarily since the original iterator could be used directly.",
-        fix: "Remove the `.collect()` and chain the iterator operations directly.",
-    },
-    RuleDoc {
-        name: "large-enum-variant",
-        category: "Performance",
-        severity: "Warning",
-        description: "Flags enums where variants have significantly different sizes (>3x field count disparity). The enum's size equals its largest variant, wasting memory for smaller variants.",
-        fix: "Box the large variant's data: `LargeVariant(Box<LargeData>)`.",
-    },
-    RuleDoc {
-        name: "unnecessary-allocation",
-        category: "Performance",
-        severity: "Warning",
-        description: "Flags `Vec::new()` or `String::new()` inside loops. Each iteration allocates a new buffer, which is expensive.",
-        fix: "Move the allocation outside the loop and use `.clear()` to reuse it.",
-    },
-    // ── Security ────────────────────────────────────────────────
-    RuleDoc {
-        name: "hardcoded-secrets",
-        category: "Security",
-        severity: "Error",
-        description: "Flags string literals assigned to variables named `api_key`, `password`, `token`, `secret`, etc. (length > 8 chars). Hardcoded secrets in source code can be extracted from compiled binaries or version control.",
-        fix: "Use environment variables, a secrets manager, or config files excluded from version control.",
-    },
-    RuleDoc {
-        name: "unsafe-block-audit",
-        category: "Security",
-        severity: "Warning",
-        description: "Flags `unsafe {}` blocks and `unsafe fn` declarations. Unsafe code bypasses Rust's memory safety guarantees and must be carefully audited. Skipped if the crate declares `#![forbid(unsafe_code)]`.",
-        fix: "Verify the safety invariants are documented and correct. Consider safe abstractions or crates like `zerocopy` to eliminate unsafe.",
-    },
-    RuleDoc {
-        name: "sql-injection-risk",
-        category: "Security",
-        severity: "Error",
-        description: "Flags `format!()` output passed to `.query()`, `.execute()`, or `.raw()` methods. String interpolation in SQL queries enables SQL injection attacks.",
-        fix: "Use parameterized queries (`$1`, `?`) provided by your database library (sqlx, diesel, sea-orm).",
-    },
-    // ── Async ───────────────────────────────────────────────────
-    RuleDoc {
-        name: "blocking-in-async",
-        category: "Async",
-        severity: "Error",
-        description: "Flags blocking `std` calls inside `async fn`: `std::thread::sleep`, `std::fs::*`, `std::net::*`. These block the async runtime's thread pool, reducing concurrency and potentially causing deadlocks.",
-        fix: "Use async equivalents: `tokio::time::sleep`, `tokio::fs::*`, `tokio::net::*`. For CPU-bound work, use `tokio::task::spawn_blocking`.",
-    },
-    RuleDoc {
-        name: "block-on-in-async",
-        category: "Async",
-        severity: "Error",
-        description: "Flags `Runtime::block_on()` or `futures::executor::block_on()` called inside `async fn`. This blocks the current thread waiting for a future, which can deadlock the runtime if all worker threads are blocked.",
-        fix: "Use `.await` instead of `block_on()`. If you need to call async code from sync context, restructure to avoid nesting runtimes.",
-    },
-    // ── Framework ───────────────────────────────────────────────
-    RuleDoc {
-        name: "tokio-main-missing",
-        category: "Framework",
-        severity: "Error",
-        description: "Flags `async fn main()` without `#[tokio::main]` (or equivalent runtime attribute). Without it, the async runtime is not initialized and the program won't compile or will panic.",
-        fix: "Add `#[tokio::main]` above `async fn main()`.",
-    },
-    RuleDoc {
-        name: "tokio-spawn-without-move",
-        category: "Framework",
-        severity: "Error",
-        description: "Flags `tokio::spawn(async { ... })` without the `move` keyword. Without `move`, the spawned task borrows from the enclosing scope, which often fails to compile due to lifetime requirements ('static bound on spawn).",
-        fix: "Use `tokio::spawn(async move { ... })`.",
-    },
-    RuleDoc {
-        name: "axum-handler-not-async",
-        category: "Framework",
-        severity: "Warning",
-        description: "Flags non-async handler functions in axum. Web framework handlers run on the async runtime and must not block.",
-        fix: "Make the handler `async fn` and use async I/O operations.",
-    },
-    RuleDoc {
-        name: "actix-blocking-handler",
-        category: "Framework",
-        severity: "Error",
-        description: "Flags blocking calls in actix-web handler functions. Web framework handlers run on the async runtime and must not block.",
-        fix: "Make the handler `async fn` and use async I/O operations.",
-    },
-];
+fn build_rule_docs() -> Vec<RuleDoc> {
+    rules::all_custom_rules()
+        .iter()
+        .map(|rule| RuleDoc {
+            name: rule.name().to_string(),
+            category: rule.category().to_string(),
+            severity: rule.severity().to_string(),
+            description: rule.description().to_string(),
+            fix: rule.fix_hint().to_string(),
+        })
+        .collect()
+}
 
 fn get_rule_explanation(rule: &str) -> String {
     // Look up in the data-driven registry first
-    if let Some(doc) = RULE_DOCS.iter().find(|d| d.name == rule) {
+    let docs = build_rule_docs();
+    if let Some(doc) = docs.iter().find(|d| d.name == rule) {
         return format!(
             "## {}\n\n**Category:** {} | **Severity:** {}\n\n{}\n\n**Fix:** {}",
             doc.name, doc.category, doc.severity, doc.description, doc.fix
@@ -411,9 +534,7 @@ fn get_rule_explanation(rule: &str) -> String {
             "## {rule}\n\nThis is a Clippy lint tracked by rust-doctor with custom severity/category mapping.\n\nSee full documentation: https://rust-lang.github.io/rust-clippy/master/index.html#{lint_name}"
         )
     } else {
-        format!(
-            "Unknown rule: `{rule}`\n\nUse the `list_rules` tool to see all available rules."
-        )
+        format!("Unknown rule: `{rule}`\n\nUse the `list_rules` tool to see all available rules.")
     }
 }
 
@@ -421,21 +542,25 @@ fn get_all_rules_listing() -> String {
     let mut text = String::from("# rust-doctor Rules\n\n## Custom Rules (AST-based via syn)\n\n");
 
     use std::fmt::Write;
-    let mut current_category = "";
-    for doc in RULE_DOCS {
+    let docs = build_rule_docs();
+    let mut current_category = String::new();
+    for doc in &docs {
         if doc.category != current_category {
             if !current_category.is_empty() {
                 text.push('\n');
             }
             let _ = writeln!(text, "### {}", doc.category);
-            current_category = doc.category;
+            current_category.clone_from(&doc.category);
         }
         let _ = writeln!(
             text,
             "- `{}` ({}) — {}",
             doc.name,
             doc.severity.to_lowercase(),
-            doc.description.split(". ").next().unwrap_or(doc.description)
+            doc.description
+                .split(". ")
+                .next()
+                .unwrap_or(&doc.description)
         );
     }
 
@@ -464,26 +589,28 @@ mod tests {
 
     #[test]
     fn test_rule_docs_covers_all_custom_rules() {
-        let expected = crate::scan::CUSTOM_RULE_NAMES
-            .iter()
-            .filter(|name| **name != "unused-dependency") // external tool rule, not AST
-            .collect::<Vec<_>>();
+        let docs = build_rule_docs();
+        let expected: Vec<String> = crate::scan::custom_rule_names()
+            .into_iter()
+            .filter(|name| name != "unused-dependency") // external tool rule, not AST
+            .collect();
 
         for rule_name in &expected {
             assert!(
-                RULE_DOCS.iter().any(|doc| doc.name == **rule_name),
-                "RULE_DOCS is missing entry for custom rule '{rule_name}'"
+                docs.iter().any(|doc| doc.name == *rule_name),
+                "build_rule_docs() is missing entry for custom rule '{rule_name}'"
             );
         }
     }
 
     #[test]
     fn test_rule_docs_has_no_duplicates() {
+        let docs = build_rule_docs();
         let mut seen = std::collections::HashSet::new();
-        for doc in RULE_DOCS {
+        for doc in &docs {
             assert!(
-                seen.insert(doc.name),
-                "RULE_DOCS has duplicate entry for '{}'",
+                seen.insert(&doc.name),
+                "build_rule_docs() has duplicate entry for '{}'",
                 doc.name
             );
         }
@@ -491,11 +618,24 @@ mod tests {
 
     #[test]
     fn test_rule_docs_fields_not_empty() {
-        for doc in RULE_DOCS {
+        let docs = build_rule_docs();
+        for doc in &docs {
             assert!(!doc.name.is_empty(), "Rule has empty name");
-            assert!(!doc.category.is_empty(), "Rule '{}' has empty category", doc.name);
-            assert!(!doc.severity.is_empty(), "Rule '{}' has empty severity", doc.name);
-            assert!(!doc.description.is_empty(), "Rule '{}' has empty description", doc.name);
+            assert!(
+                !doc.category.is_empty(),
+                "Rule '{}' has empty category",
+                doc.name
+            );
+            assert!(
+                !doc.severity.is_empty(),
+                "Rule '{}' has empty severity",
+                doc.name
+            );
+            assert!(
+                !doc.description.is_empty(),
+                "Rule '{}' has empty description",
+                doc.name
+            );
             assert!(!doc.fix.is_empty(), "Rule '{}' has empty fix", doc.name);
         }
     }
@@ -507,7 +647,7 @@ mod tests {
         let explanation = get_rule_explanation("unwrap-in-production");
         assert!(explanation.contains("## unwrap-in-production"));
         assert!(explanation.contains("Error Handling"));
-        assert!(explanation.contains("Warning"));
+        assert!(explanation.contains("warning"));
         assert!(explanation.contains("Fix:"));
     }
 
@@ -557,9 +697,10 @@ mod tests {
     #[test]
     fn test_rules_listing_contains_all_custom_rules() {
         let listing = get_all_rules_listing();
-        for doc in RULE_DOCS {
+        let docs = build_rule_docs();
+        for doc in &docs {
             assert!(
-                listing.contains(doc.name),
+                listing.contains(doc.name.as_str()),
                 "Rules listing is missing '{}'",
                 doc.name
             );
@@ -591,7 +732,12 @@ mod tests {
         assert!(names.contains(&"score"), "Missing score tool");
         assert!(names.contains(&"explain_rule"), "Missing explain_rule tool");
         assert!(names.contains(&"list_rules"), "Missing list_rules tool");
-        assert_eq!(names.len(), 4, "Expected exactly 4 tools, got {}", names.len());
+        assert_eq!(
+            names.len(),
+            4,
+            "Expected exactly 4 tools, got {}",
+            names.len()
+        );
     }
 
     #[test]
@@ -599,7 +745,10 @@ mod tests {
         let server = RustDoctorServer::new();
         let tools = server.tool_router.list_all();
         let scan = tools.iter().find(|t| t.name == "scan").unwrap();
-        assert!(scan.output_schema.is_some(), "scan tool should have outputSchema from Json<ScanOutput>");
+        assert!(
+            scan.output_schema.is_some(),
+            "scan tool should have outputSchema from Json<ScanOutput>"
+        );
     }
 
     #[test]
@@ -607,17 +756,75 @@ mod tests {
         let server = RustDoctorServer::new();
         let tools = server.tool_router.list_all();
         let score = tools.iter().find(|t| t.name == "score").unwrap();
-        assert!(score.output_schema.is_some(), "score tool should have outputSchema from Json<ScoreOutput>");
+        assert!(
+            score.output_schema.is_some(),
+            "score tool should have outputSchema from Json<ScoreOutput>"
+        );
     }
 
     // --- discover_and_resolve error mapping ---
 
     #[test]
     fn test_discover_and_resolve_invalid_path() {
-        let result = discover_and_resolve("/nonexistent/path/to/project");
+        let result = discover_and_resolve("/nonexistent/path/to/project", false);
         assert!(result.is_err());
         let err = result.unwrap_err();
         // Should be invalid_params (not internal_error) for bad input
         assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+    }
+
+    #[test]
+    fn test_discover_and_resolve_error_does_not_contain_raw_path() {
+        let result = discover_and_resolve("/nonexistent/path/to/project", false);
+        let err = result.unwrap_err();
+        let msg = err.message.to_string();
+        // Sanitized: must NOT contain the raw filesystem path
+        assert!(
+            !msg.contains("/nonexistent/path"),
+            "MCP error should not contain raw path, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_discover_and_resolve_outside_home() {
+        // /tmp is typically outside $HOME — should be rejected
+        if std::env::var("HOME").is_ok() {
+            let result = discover_and_resolve("/etc", false);
+            assert!(result.is_err());
+            let err = result.unwrap_err();
+            assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
+        }
+    }
+
+    // --- MCP e2e: scan + score on a real project ---
+
+    #[test]
+    fn test_scan_tool_on_self() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let result = discover_and_resolve(manifest_dir, false);
+        assert!(result.is_ok(), "discover_and_resolve failed: {result:?}");
+        let (_dir, project_info, resolved) = result.unwrap();
+        let scan_result = scan::scan_project(&project_info, &resolved, true, &[], true);
+        assert!(scan_result.is_ok(), "scan_project failed: {scan_result:?}");
+        let result = scan_result.unwrap();
+        // Verify ScanOutput structure
+        assert!(result.score <= 100);
+        assert!(result.source_file_count > 0);
+    }
+
+    #[test]
+    fn test_score_output_structure() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let (_dir, project_info, resolved) = discover_and_resolve(manifest_dir, false).unwrap();
+        let result = scan::scan_project(&project_info, &resolved, true, &[], true).unwrap();
+        let output = ScoreOutput {
+            score: result.score,
+            score_label: result.score_label,
+        };
+        assert!(output.score <= 100);
+        // Verify it serializes correctly
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(json.get("score").is_some());
+        assert!(json.get("score_label").is_some());
     }
 }

@@ -1,4 +1,4 @@
-use crate::diagnostics::{Diagnostic, ScanResult, Severity};
+use crate::diagnostics::{Diagnostic, ScanResult, ScoreLabel, Severity};
 use owo_colors::{OwoColorize, Stream};
 use std::collections::{HashMap, HashSet};
 
@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 const ERROR_RULE_PENALTY: f64 = 1.5;
 const WARNING_RULE_PENALTY: f64 = 0.75;
+const INFO_RULE_PENALTY: f64 = 0.25;
 const SCORE_GOOD_THRESHOLD: u32 = 75;
 const SCORE_OK_THRESHOLD: u32 = 50;
 const SCORE_BAR_WIDTH: usize = 40;
@@ -15,9 +16,10 @@ const SCORE_BAR_WIDTH: usize = 40;
 /// Calculate health score from diagnostics.
 /// Score = 100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75), clamped 0–100.
 /// Returns (score, label).
-pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, &'static str) {
+pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, ScoreLabel) {
     let mut error_rules = HashSet::new();
     let mut warning_rules = HashSet::new();
+    let mut info_rules = HashSet::new();
 
     for d in diagnostics {
         match d.severity {
@@ -27,11 +29,19 @@ pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, &'static str) {
             Severity::Warning => {
                 warning_rules.insert(d.rule.as_str());
             }
+            Severity::Info => {
+                info_rules.insert(d.rule.as_str());
+            }
         }
     }
 
-    let penalty = (error_rules.len() as f64 * ERROR_RULE_PENALTY)
-        + (warning_rules.len() as f64 * WARNING_RULE_PENALTY);
+    let penalty = (info_rules.len() as f64).mul_add(
+        INFO_RULE_PENALTY,
+        (error_rules.len() as f64).mul_add(
+            ERROR_RULE_PENALTY,
+            warning_rules.len() as f64 * WARNING_RULE_PENALTY,
+        ),
+    );
 
     let score = (100.0 - penalty).round().clamp(0.0, 100.0) as u32;
     let label = score_label(score);
@@ -39,13 +49,13 @@ pub fn calculate_score(diagnostics: &[Diagnostic]) -> (u32, &'static str) {
     (score, label)
 }
 
-fn score_label(score: u32) -> &'static str {
+const fn score_label(score: u32) -> ScoreLabel {
     if score >= SCORE_GOOD_THRESHOLD {
-        "Great"
+        ScoreLabel::Great
     } else if score >= SCORE_OK_THRESHOLD {
-        "Needs work"
+        ScoreLabel::NeedsWork
     } else {
-        "Critical"
+        ScoreLabel::Critical
     }
 }
 
@@ -89,8 +99,13 @@ fn print_score_box(result: &ScanResult) {
     // Build content lines
     let score_text = format!("{score} / 100  {label}");
     let bar = build_score_bar(score);
+    let info_part = if result.info_count > 0 {
+        format!("  ℹ {} info(s)", result.info_count)
+    } else {
+        String::new()
+    };
     let stats = format!(
-        "{} {} error(s)  {} {} warning(s)  {} files  {:.1}s",
+        "{} {} error(s)  {} {} warning(s){info_part}  {} files  {:.1}s",
         if result.error_count > 0 { "✗" } else { "✓" },
         result.error_count,
         if result.warning_count > 0 {
@@ -189,8 +204,17 @@ fn print_score_box(result: &ScanResult) {
     println!("{}", empty_line());
 
     // Stats
+    let colored_info_part = if result.info_count > 0 {
+        format!(
+            "  {} {} info(s)",
+            "ℹ".if_supports_color(Stream::Stdout, |t| t.cyan()),
+            result.info_count
+        )
+    } else {
+        String::new()
+    };
     let colored_stats = format!(
-        "{} {} error(s)  {} {} warning(s)  {} files  {:.1}s",
+        "{} {} error(s)  {} {} warning(s){colored_info_part}  {} files  {:.1}s",
         colorize_by_score(
             if result.error_count > 0 { "✗" } else { "✓" },
             if result.error_count > 0 { 0 } else { 100 }
@@ -279,12 +303,13 @@ fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
         });
     }
 
-    // Sort: errors first, then warnings
+    // Sort: errors first, then warnings, then info
     let mut sorted: Vec<_> = groups.into_values().collect();
     sorted.sort_by(|a, b| {
         let severity_ord = |s: &Severity| match s {
             Severity::Error => 0,
             Severity::Warning => 1,
+            Severity::Info => 2,
         };
         severity_ord(&a.severity)
             .cmp(&severity_ord(&b.severity))
@@ -296,6 +321,9 @@ fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
             Severity::Error => format!("{}", "✗".if_supports_color(Stream::Stderr, |t| t.red())),
             Severity::Warning => {
                 format!("{}", "⚠".if_supports_color(Stream::Stderr, |t| t.yellow()))
+            }
+            Severity::Info => {
+                format!("{}", "ℹ".if_supports_color(Stream::Stderr, |t| t.cyan()))
             }
         };
 
@@ -382,7 +410,7 @@ mod tests {
     fn test_perfect_score() {
         let (score, label) = calculate_score(&[]);
         assert_eq!(score, 100);
-        assert_eq!(label, "Great");
+        assert_eq!(label, ScoreLabel::Great);
     }
 
     #[test]
@@ -394,7 +422,7 @@ mod tests {
         ];
         let (score, label) = calculate_score(&diags);
         assert_eq!(score, 97);
-        assert_eq!(label, "Great");
+        assert_eq!(label, ScoreLabel::Great);
     }
 
     #[test]
@@ -408,7 +436,7 @@ mod tests {
         ];
         let (score, label) = calculate_score(&diags);
         assert_eq!(score, 97);
-        assert_eq!(label, "Great");
+        assert_eq!(label, ScoreLabel::Great);
     }
 
     #[test]
@@ -437,7 +465,7 @@ mod tests {
         }
         let (score, label) = calculate_score(&diags);
         assert_eq!(score, 70);
-        assert_eq!(label, "Needs work");
+        assert_eq!(label, ScoreLabel::NeedsWork);
     }
 
     #[test]
@@ -449,17 +477,17 @@ mod tests {
         }
         let (score, label) = calculate_score(&diags);
         assert_eq!(score, 0);
-        assert_eq!(label, "Critical");
+        assert_eq!(label, ScoreLabel::Critical);
     }
 
     #[test]
     fn test_score_label_thresholds() {
-        assert_eq!(score_label(100), "Great");
-        assert_eq!(score_label(75), "Great");
-        assert_eq!(score_label(74), "Needs work");
-        assert_eq!(score_label(50), "Needs work");
-        assert_eq!(score_label(49), "Critical");
-        assert_eq!(score_label(0), "Critical");
+        assert_eq!(score_label(100), ScoreLabel::Great);
+        assert_eq!(score_label(75), ScoreLabel::Great);
+        assert_eq!(score_label(74), ScoreLabel::NeedsWork);
+        assert_eq!(score_label(50), ScoreLabel::NeedsWork);
+        assert_eq!(score_label(49), ScoreLabel::Critical);
+        assert_eq!(score_label(0), ScoreLabel::Critical);
     }
 
     #[test]

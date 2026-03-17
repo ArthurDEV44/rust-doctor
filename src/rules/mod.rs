@@ -14,12 +14,12 @@ use std::path::Path;
 // ─── Shared helpers for test-code detection ─────────────────────────────────
 
 /// Check if an attribute list contains `#[test]`.
-pub(crate) fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
+pub fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident("test"))
 }
 
 /// Check if an attribute list contains `#[cfg(test)]`.
-pub(crate) fn has_cfg_test(attrs: &[syn::Attribute]) -> bool {
+pub fn has_cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         if !attr.path().is_ident("cfg") {
             return false;
@@ -32,16 +32,28 @@ pub(crate) fn has_cfg_test(attrs: &[syn::Attribute]) -> bool {
 /// Trait for custom AST-based rules that clippy doesn't cover.
 ///
 /// Rules must be `Send + Sync` for parallel file processing.
-#[allow(dead_code)] // methods used by implementors in sub-modules
+/// Metadata methods (`description`, `fix_hint`) co-locate documentation
+/// with the implementation, so adding a new rule only requires changes
+/// in one place.
+#[expect(
+    dead_code,
+    reason = "helper methods used by implementors in sub-modules"
+)]
 pub trait CustomRule: Send + Sync {
     /// Unique rule identifier (e.g. "unwrap-in-production").
-    fn name(&self) -> &str;
+    fn name(&self) -> &'static str;
 
     /// Category this rule belongs to.
     fn category(&self) -> Category;
 
     /// Default severity for findings from this rule.
     fn severity(&self) -> Severity;
+
+    /// Human-readable description of what this rule detects.
+    fn description(&self) -> &'static str;
+
+    /// Actionable fix guidance for violations found by this rule.
+    fn fix_hint(&self) -> &'static str;
 
     /// Check a parsed Rust file and return diagnostics.
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic>;
@@ -81,11 +93,10 @@ impl RuleEngine {
 
     /// Scan all `.rs` files under `project_root/src/`, skipping files
     /// matching the ignore patterns. Returns collected diagnostics.
-    pub fn scan(
-        &self,
-        project_root: &Path,
-        ignore_files: &[String],
-    ) -> Vec<Diagnostic> {
+    ///
+    /// Each file is read from disk once and cached in memory for the duration
+    /// of this scan. The cache is dropped when this method returns.
+    pub fn scan(&self, project_root: &Path, ignore_files: &[String]) -> Vec<Diagnostic> {
         if self.rules.is_empty() {
             return vec![];
         }
@@ -104,30 +115,33 @@ impl RuleEngine {
         // Build ignore glob set
         let ignore_set = build_ignore_set(ignore_files);
 
-        // Process files in parallel with rayon
-        let diagnostics: Vec<Diagnostic> = files
-            .par_iter()
-            .flat_map(|file_path| {
-                // Make path relative to project root for matching and display
-                let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
-
-                // Check ignore patterns
+        // Read all files into a cache (holds all scanned .rs content in memory)
+        let file_cache: Vec<(std::path::PathBuf, String)> = files
+            .into_iter()
+            .filter_map(|file_path| {
+                let rel_path = file_path.strip_prefix(project_root).unwrap_or(&file_path);
                 if let Ok(ref set) = ignore_set
                     && set.is_match(rel_path)
                 {
-                    return vec![];
+                    return None;
                 }
-
-                // Read and parse file
-                let content = match std::fs::read_to_string(file_path) {
-                    Ok(c) => c,
+                match std::fs::read_to_string(&file_path) {
+                    Ok(content) => Some((file_path, content)),
                     Err(e) => {
                         eprintln!("Warning: could not read '{}': {e}", file_path.display());
-                        return vec![];
+                        None
                     }
-                };
+                }
+            })
+            .collect();
 
-                let syntax = match syn::parse_file(&content) {
+        // Process cached files in parallel with rayon
+        file_cache
+            .par_iter()
+            .flat_map(|(file_path, content): &(std::path::PathBuf, String)| {
+                let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
+
+                let syntax = match syn::parse_file(content) {
                     Ok(ast) => ast,
                     Err(e) => {
                         eprintln!("Warning: parse error in '{}': {e}", rel_path.display());
@@ -141,9 +155,7 @@ impl RuleEngine {
                     .flat_map(|rule| run_rule_safely(rule.as_ref(), &syntax, rel_path))
                     .collect::<Vec<_>>()
             })
-            .collect();
-
-        diagnostics
+            .collect()
     }
 }
 
@@ -154,13 +166,14 @@ fn run_rule_safely(rule: &dyn CustomRule, syntax: &syn::File, path: &Path) -> Ve
     match result {
         Ok(diagnostics) => diagnostics,
         Err(payload) => {
-            let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
-                (*s).to_string()
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "<non-string panic>".to_string()
-            };
+            let msg = payload.downcast_ref::<&'static str>().map_or_else(
+                || {
+                    payload
+                        .downcast_ref::<String>()
+                        .map_or_else(|| "<non-string panic>".to_string(), String::clone)
+                },
+                |s| (*s).to_string(),
+            );
             eprintln!(
                 "Warning: rule '{}' panicked on '{}': {msg}",
                 rule.name(),
@@ -171,6 +184,17 @@ fn run_rule_safely(rule: &dyn CustomRule, syntax: &syn::File, path: &Path) -> Ve
     }
 }
 
+/// Return all custom rules across all categories.
+/// Used to derive the rule registry and documentation at startup.
+pub fn all_custom_rules() -> Vec<Box<dyn CustomRule>> {
+    error_handling::all_rules()
+        .into_iter()
+        .chain(performance::all_rules())
+        .chain(security::all_rules())
+        .chain(async_rules::all_rules())
+        .chain(framework::all_rules())
+        .collect()
+}
 
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
     scanner::build_glob_set(patterns)
@@ -205,14 +229,13 @@ impl AnalysisPass for RuleEnginePass {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::path::PathBuf;
 
     // --- Test rule implementations ---
 
     struct CountFnRule;
 
     impl CustomRule for CountFnRule {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "count-fn"
         }
         fn category(&self) -> Category {
@@ -220,6 +243,12 @@ mod tests {
         }
         fn severity(&self) -> Severity {
             Severity::Warning
+        }
+        fn description(&self) -> &'static str {
+            "test rule"
+        }
+        fn fix_hint(&self) -> &'static str {
+            "test fix"
         }
         fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
             let fn_count = syntax
@@ -247,7 +276,7 @@ mod tests {
     struct PanickingRule;
 
     impl CustomRule for PanickingRule {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "panicking-rule"
         }
         fn category(&self) -> Category {
@@ -255,6 +284,12 @@ mod tests {
         }
         fn severity(&self) -> Severity {
             Severity::Error
+        }
+        fn description(&self) -> &'static str {
+            "test rule"
+        }
+        fn fix_hint(&self) -> &'static str {
+            "test fix"
         }
         fn check_file(&self, _syntax: &syn::File, _path: &Path) -> Vec<Diagnostic> {
             panic!("intentional test panic");
@@ -264,7 +299,7 @@ mod tests {
     struct AlwaysWarnsRule;
 
     impl CustomRule for AlwaysWarnsRule {
-        fn name(&self) -> &str {
+        fn name(&self) -> &'static str {
             "always-warns"
         }
         fn category(&self) -> Category {
@@ -272,6 +307,12 @@ mod tests {
         }
         fn severity(&self) -> Severity {
             Severity::Warning
+        }
+        fn description(&self) -> &'static str {
+            "test rule"
+        }
+        fn fix_hint(&self) -> &'static str {
+            "test fix"
         }
         fn check_file(&self, _syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
             vec![Diagnostic {
@@ -289,10 +330,9 @@ mod tests {
 
     // --- Tests ---
 
-    fn make_temp_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("rust-doctor-test-{name}"));
-        let src_dir = dir.join("src");
-        let _ = std::fs::remove_dir_all(&dir);
+    fn make_temp_project(files: &[(&str, &str)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let src_dir = dir.path().join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
         for (filename, content) in files {
             let path = src_dir.join(filename);
@@ -308,85 +348,70 @@ mod tests {
     #[test]
     fn test_rule_engine_with_no_rules() {
         let engine = RuleEngine::new(vec![]);
-        let dir = make_temp_project("no-rules", &[("main.rs", "fn main() {}")]);
-        let diags = engine.scan(&dir, &[]);
+        let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
+        let diags = engine.scan(dir.path(), &[]);
         assert!(diags.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_no_src_dir() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-no-src");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = tempfile::tempdir().unwrap();
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(&dir, &[]);
+        let diags = engine.scan(dir.path(), &[]);
         assert!(diags.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_runs_rules_on_files() {
-        let dir = make_temp_project("runs-rules", &[("main.rs", "fn main() {}")]);
+        let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(&dir, &[]);
+        let diags = engine.scan(dir.path(), &[]);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_multiple_files() {
-        let dir = make_temp_project(
-            "multi-files",
-            &[
-                ("main.rs", "fn main() {}"),
-                ("lib.rs", "pub fn hello() {}"),
-                ("utils.rs", "pub fn util() {}"),
-            ],
-        );
+        let dir = make_temp_project(&[
+            ("main.rs", "fn main() {}"),
+            ("lib.rs", "pub fn hello() {}"),
+            ("utils.rs", "pub fn util() {}"),
+        ]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(&dir, &[]);
+        let diags = engine.scan(dir.path(), &[]);
         assert_eq!(diags.len(), 3);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_catches_panics() {
-        let dir = make_temp_project("panic-catch", &[("main.rs", "fn main() {}")]);
+        let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(PanickingRule), Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(&dir, &[]);
+        let diags = engine.scan(dir.path(), &[]);
         // PanickingRule panicked and was caught; AlwaysWarnsRule still ran
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_handles_parse_errors() {
-        let dir = make_temp_project("parse-error", &[("main.rs", "this is not valid rust {{{{")]);
+        let dir = make_temp_project(&[("main.rs", "this is not valid rust {{{{")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(&dir, &[]);
+        let diags = engine.scan(dir.path(), &[]);
         // File couldn't be parsed, so no diagnostics
         assert!(diags.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_skips_ignored_files() {
-        let dir = make_temp_project(
-            "ignore-files",
-            &[
-                ("main.rs", "fn main() {}"),
-                ("generated/output.rs", "pub fn gen() {}"),
-            ],
-        );
+        let dir = make_temp_project(&[
+            ("main.rs", "fn main() {}"),
+            ("generated/output.rs", "pub fn gen() {}"),
+        ]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
         let ignore = vec!["src/generated/**".to_string()];
-        let diags = engine.scan(&dir, &ignore);
+        let diags = engine.scan(dir.path(), &ignore);
         assert_eq!(diags.len(), 1);
         assert!(diags[0].file_path.to_string_lossy().contains("main.rs"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -399,22 +424,17 @@ mod tests {
 
     #[test]
     fn test_collect_rs_files() {
-        let dir = make_temp_project(
-            "collect-rs",
-            &[("main.rs", ""), ("lib.rs", ""), ("sub/mod.rs", "")],
-        );
-        let files = scanner::collect_rs_files(&dir.join("src"));
+        let dir = make_temp_project(&[("main.rs", ""), ("lib.rs", ""), ("sub/mod.rs", "")]);
+        let files = scanner::collect_rs_files(&dir.path().join("src"));
         assert_eq!(files.len(), 3);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_rule_engine_pass() {
-        let dir = make_temp_project("pass-test", &[("main.rs", "fn main() {}")]);
+        let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let pass = RuleEnginePass::new(vec![Box::new(AlwaysWarnsRule)], vec![]);
-        let result = pass.run(&dir);
+        let result = pass.run(dir.path());
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

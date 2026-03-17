@@ -1,15 +1,27 @@
+#![forbid(unsafe_code)]
+
 use clap::Parser;
 use rust_doctor::cli::{Cli, FailOn};
-use rust_doctor::{config, discovery, mcp, output, scan};
+use rust_doctor::{config, discovery, output, scan};
 use std::process;
 
 fn main() {
     let cli = Cli::parse();
 
     // MCP mode: run as a stdio MCP server for AI tool integration
+    #[cfg(feature = "mcp")]
     if cli.mcp {
-        mcp::run_mcp_server();
+        if let Err(e) = rust_doctor::mcp::run_mcp_server() {
+            eprintln!("Error: MCP server failed: {e}");
+            process::exit(1);
+        }
         return;
+    }
+
+    #[cfg(not(feature = "mcp"))]
+    if cli.mcp {
+        eprintln!("Error: MCP support not compiled in. Rebuild with `--features mcp`.");
+        process::exit(1);
     }
 
     // Bootstrap: resolve directory, discover project, load file config
@@ -22,8 +34,13 @@ fn main() {
             }
         };
 
-    // Merge CLI flags with file config
-    let resolved = config::resolve_config(&cli, file_config.as_ref());
+    // Merge CLI flags with file config (skip project config if --no-project-config)
+    let effective_config = if cli.no_project_config {
+        None
+    } else {
+        file_config.as_ref()
+    };
+    let resolved = config::resolve_config(&cli, effective_config);
 
     // Run scan
     let suppress_spinner = cli.score || cli.json;
@@ -58,6 +75,11 @@ fn main() {
     let should_fail = match fail_on {
         FailOn::Error => scan_result.error_count > 0,
         FailOn::Warning => scan_result.error_count > 0 || scan_result.warning_count > 0,
+        FailOn::Info => {
+            scan_result.error_count > 0
+                || scan_result.warning_count > 0
+                || scan_result.info_count > 0
+        }
         FailOn::None => false,
     };
     if should_fail {

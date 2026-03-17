@@ -7,10 +7,36 @@ pub enum ScanError {
     Discovery(#[from] DiscoveryError),
 
     #[error("workspace resolution failed: {0}")]
-    Workspace(String),
+    Workspace(#[from] WorkspaceError),
 
     #[error("diff resolution failed: {0}")]
-    Diff(String),
+    Diff(#[from] DiffError),
+}
+
+/// Errors from workspace member resolution.
+#[derive(thiserror::Error, Debug)]
+pub enum WorkspaceError {
+    #[error("unknown workspace member '{name}'. Available members: {available}")]
+    UnknownMember { name: String, available: String },
+
+    #[error("workspace has no members")]
+    NoMembers,
+}
+
+/// Errors from diff mode resolution.
+#[derive(thiserror::Error, Debug)]
+pub enum DiffError {
+    #[error("invalid ref '{name}': {reason}")]
+    InvalidRef { name: String, reason: String },
+
+    #[error("git is not available or directory is not a git repository")]
+    GitNotFound,
+
+    #[error("failed to find merge base: {0}")]
+    MergeBaseFailed(String),
+
+    #[error("{0}")]
+    Other(String),
 }
 
 /// Errors from project discovery via `cargo metadata`.
@@ -39,9 +65,9 @@ pub enum PassError {
     Skipped { pass: String, reason: String },
 }
 
-/// Errors from the MCP server tool handlers.
+/// Errors from project bootstrapping (shared between CLI and MCP).
 #[derive(thiserror::Error, Debug)]
-pub enum McpToolError {
+pub enum BootstrapError {
     #[error("invalid directory '{path}': {source}")]
     InvalidDirectory {
         path: String,
@@ -54,6 +80,34 @@ pub enum McpToolError {
 
     #[error(transparent)]
     Discovery(#[from] DiscoveryError),
+}
+
+/// Errors from loading the config file (`rust-doctor.toml`).
+#[derive(thiserror::Error, Debug)]
+pub enum ConfigError {
+    #[error("failed to read config file '{}': {source}", path.display())]
+    Io {
+        path: std::path::PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to parse config file '{}': {source}", path.display())]
+    Parse {
+        path: std::path::PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+
+    #[error("failed to parse [package.metadata.rust-doctor] in Cargo.toml: {0}")]
+    MetadataParse(#[from] serde_json::Error),
+}
+
+/// Errors from the MCP server tool handlers.
+#[derive(thiserror::Error, Debug)]
+pub enum McpToolError {
+    #[error(transparent)]
+    Bootstrap(#[from] BootstrapError),
 
     #[error(transparent)]
     Scan(#[from] ScanError),

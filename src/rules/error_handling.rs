@@ -1,5 +1,5 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
-use crate::rules::{has_cfg_test, has_test_attr, CustomRule};
+use crate::rules::{CustomRule, has_cfg_test, has_test_attr};
 use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
@@ -19,6 +19,12 @@ impl CustomRule for UnwrapInProduction {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags `.unwrap()` and `.expect()` calls outside of test code. These calls panic at runtime if the value is `None` or `Err`, crashing your application."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use the `?` operator to propagate errors, or handle them with `match`, `if let`, `.unwrap_or()`, or `.unwrap_or_else()`."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = UnwrapVisitor {
@@ -93,6 +99,12 @@ impl CustomRule for PanicInLibrary {
     }
     fn severity(&self) -> Severity {
         Severity::Error
+    }
+    fn description(&self) -> &'static str {
+        "Flags `panic!()`, `todo!()`, and `unimplemented!()` macros in library code. Libraries should return errors rather than panicking, since callers cannot recover from a panic across crate boundaries."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Return `Result<T, E>` or `Option<T>` instead of panicking."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         // Only check library files (not main.rs or bin/*.rs)
@@ -172,6 +184,12 @@ impl CustomRule for BoxDynErrorInPublicApi {
     fn severity(&self) -> Severity {
         Severity::Warning
     }
+    fn description(&self) -> &'static str {
+        "Flags `pub fn` returning `Result<_, Box<dyn Error>>`. This erases error type information, making it impossible for callers to match on specific error variants."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Define a custom error enum with `thiserror` or return a concrete error type."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
@@ -210,7 +228,7 @@ impl CustomRule for BoxDynErrorInPublicApi {
     }
 }
 
-fn is_pub(vis: &syn::Visibility) -> bool {
+const fn is_pub(vis: &syn::Visibility) -> bool {
     matches!(vis, syn::Visibility::Public(_))
 }
 
@@ -319,6 +337,12 @@ impl CustomRule for ResultUnitError {
     }
     fn severity(&self) -> Severity {
         Severity::Warning
+    }
+    fn description(&self) -> &'static str {
+        "Flags `pub fn` returning `Result<_, ()>`. A unit error carries no information about what went wrong."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use a meaningful error type that describes the failure."
     }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
@@ -434,12 +458,12 @@ mod tests {
     fn test_unwrap_detected() {
         let diags = parse_and_check(
             &UnwrapInProduction,
-            r#"
+            r"
             fn main() {
                 let x: Option<i32> = Some(1);
                 x.unwrap();
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "unwrap-in-production");
@@ -465,13 +489,13 @@ mod tests {
     fn test_unwrap_in_test_function_skipped() {
         let diags = parse_and_check(
             &UnwrapInProduction,
-            r#"
+            r"
             #[test]
             fn my_test() {
                 let x: Option<i32> = Some(1);
                 x.unwrap();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -480,7 +504,7 @@ mod tests {
     fn test_unwrap_in_cfg_test_module_skipped() {
         let diags = parse_and_check(
             &UnwrapInProduction,
-            r#"
+            r"
             #[cfg(test)]
             mod tests {
                 fn helper() {
@@ -488,7 +512,7 @@ mod tests {
                     x.unwrap();
                 }
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -497,13 +521,13 @@ mod tests {
     fn test_unwrap_no_false_positive_on_other_methods() {
         let diags = parse_and_check(
             &UnwrapInProduction,
-            r#"
+            r"
             fn main() {
                 let x = vec![1, 2, 3];
                 x.len();
                 x.is_empty();
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -529,11 +553,11 @@ mod tests {
     fn test_todo_in_library_detected() {
         let diags = parse_and_check_lib(
             &PanicInLibrary,
-            r#"
+            r"
             pub fn not_ready() {
                 todo!();
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("todo!()"));
@@ -567,12 +591,12 @@ mod tests {
     fn test_box_dyn_error_detected() {
         let diags = parse_and_check(
             &BoxDynErrorInPublicApi,
-            r#"
+            r"
             use std::error::Error;
             pub fn do_thing() -> Result<(), Box<dyn Error>> {
                 Ok(())
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "box-dyn-error-in-public-api");
@@ -582,12 +606,12 @@ mod tests {
     fn test_box_dyn_error_private_fn_skipped() {
         let diags = parse_and_check(
             &BoxDynErrorInPublicApi,
-            r#"
+            r"
             use std::error::Error;
             fn do_thing() -> Result<(), Box<dyn Error>> {
                 Ok(())
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -596,11 +620,11 @@ mod tests {
     fn test_box_dyn_error_custom_error_ok() {
         let diags = parse_and_check(
             &BoxDynErrorInPublicApi,
-            r#"
+            r"
             pub fn do_thing() -> Result<(), MyError> {
                 Ok(())
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -611,11 +635,11 @@ mod tests {
     fn test_result_unit_error_detected() {
         let diags = parse_and_check(
             &ResultUnitError,
-            r#"
+            r"
             pub fn do_thing() -> Result<i32, ()> {
                 Ok(42)
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "result-unit-error");
@@ -625,11 +649,11 @@ mod tests {
     fn test_result_unit_error_private_fn_skipped() {
         let diags = parse_and_check(
             &ResultUnitError,
-            r#"
+            r"
             fn do_thing() -> Result<i32, ()> {
                 Ok(42)
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -638,11 +662,11 @@ mod tests {
     fn test_result_proper_error_ok() {
         let diags = parse_and_check(
             &ResultUnitError,
-            r#"
+            r"
             pub fn do_thing() -> Result<i32, String> {
                 Ok(42)
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }

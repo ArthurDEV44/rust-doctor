@@ -16,23 +16,34 @@ pub struct DiffContext {
 /// - `"auto"` → auto-detect via `git merge-base HEAD main` then `master`
 /// - any other string → use as the base branch/commit directly
 ///
-/// Returns `Ok(DiffContext)` on success, or `Err` with a user-facing message.
-pub fn resolve_diff(project_root: &Path, base_hint: &str) -> Result<DiffContext, String> {
+/// Returns `Ok(DiffContext)` on success, or `Err` with a typed error.
+pub fn resolve_diff(
+    project_root: &Path,
+    base_hint: &str,
+) -> Result<DiffContext, crate::error::DiffError> {
+    use crate::error::DiffError;
+
     // Check if we're in a git repo
     if !is_git_repo(project_root) {
-        return Err("Diff mode requires a git repository — falling back to full scan".into());
+        return Err(DiffError::GitNotFound);
     }
 
     let base = if base_hint == "auto" {
-        auto_detect_base(project_root)?
+        auto_detect_base(project_root).map_err(DiffError::MergeBaseFailed)?
     } else {
-        validate_ref_name(base_hint)?;
+        validate_ref_name(base_hint).map_err(|reason| DiffError::InvalidRef {
+            name: base_hint.to_string(),
+            reason,
+        })?;
         // Verify the branch/commit exists
-        verify_ref_exists(project_root, base_hint)?;
+        verify_ref_exists(project_root, base_hint).map_err(|reason| DiffError::InvalidRef {
+            name: base_hint.to_string(),
+            reason,
+        })?;
         base_hint.to_string()
     };
 
-    let changed_files = get_changed_rs_files(project_root, &base)?;
+    let changed_files = get_changed_rs_files(project_root, &base).map_err(DiffError::Other)?;
 
     Ok(DiffContext {
         base,
@@ -192,25 +203,46 @@ fn get_changed_rs_files(dir: &Path, base: &str) -> Result<HashSet<PathBuf>, Stri
 fn parse_changed_rs_files(output: &[u8]) -> HashSet<PathBuf> {
     String::from_utf8_lossy(output)
         .lines()
-        .filter(|line| std::path::Path::new(line).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("rs")))
+        .filter(|line| {
+            std::path::Path::new(line)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"))
+        })
         .map(|line| PathBuf::from(line.trim()))
         .collect()
 }
 
+/// Normalize a path by stripping a leading `./` and converting to forward slashes.
+/// This handles mismatches between git output (always forward slashes) and
+/// diagnostic paths that may use OS-specific separators or `./` prefixes.
+fn normalize_path(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    let stripped = s.strip_prefix("./").unwrap_or(&s);
+    PathBuf::from(stripped.replace('\\', "/"))
+}
+
 /// Filter diagnostics to only include those from changed files.
-#[allow(clippy::implicit_hasher)]
+///
+/// Uses normalized path comparison to handle mismatches between
+/// git diff output (relative to repo root) and diagnostic paths
+/// (which may be absolute or relative to a workspace member).
 pub fn filter_to_changed_files(
     diagnostics: Vec<crate::diagnostics::Diagnostic>,
     changed_files: &HashSet<PathBuf>,
 ) -> Vec<crate::diagnostics::Diagnostic> {
+    let normalized_changed: HashSet<PathBuf> =
+        changed_files.iter().map(|p| normalize_path(p)).collect();
+
     diagnostics
         .into_iter()
         .filter(|d| {
-            // Match by exact path or by filename suffix
-            changed_files.contains(&d.file_path)
-                || changed_files
-                    .iter()
-                    .any(|cf| d.file_path.ends_with(cf) || cf.ends_with(&d.file_path))
+            let norm_diag = normalize_path(&d.file_path);
+
+            // Exact match after normalization
+            normalized_changed.contains(&norm_diag)
+                // Suffix match: diagnostic path ends with a changed file path
+                // (handles absolute diagnostic paths vs relative git paths)
+                || normalized_changed.iter().any(|cf| norm_diag.ends_with(cf))
         })
         .collect()
 }
@@ -269,10 +301,50 @@ mod tests {
             },
         ];
 
-        let changed: HashSet<PathBuf> = ["src/main.rs"].iter().map(PathBuf::from).collect();
+        let changed: HashSet<PathBuf> = HashSet::from([PathBuf::from("src/main.rs")]);
         let filtered = filter_to_changed_files(diags, &changed);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].file_path, PathBuf::from("src/main.rs"));
+    }
+
+    #[test]
+    fn test_filter_handles_dot_slash_prefix() {
+        use crate::diagnostics::{Category, Diagnostic, Severity};
+
+        let diags = vec![Diagnostic {
+            file_path: PathBuf::from("./src/main.rs"),
+            rule: "test".into(),
+            category: Category::Style,
+            severity: Severity::Warning,
+            message: "test".into(),
+            help: None,
+            line: Some(1),
+            column: None,
+        }];
+
+        let changed: HashSet<PathBuf> = HashSet::from([PathBuf::from("src/main.rs")]);
+        let filtered = filter_to_changed_files(diags, &changed);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_handles_absolute_diagnostic_path() {
+        use crate::diagnostics::{Category, Diagnostic, Severity};
+
+        let diags = vec![Diagnostic {
+            file_path: PathBuf::from("/home/user/project/src/main.rs"),
+            rule: "test".into(),
+            category: Category::Style,
+            severity: Severity::Warning,
+            message: "test".into(),
+            help: None,
+            line: Some(1),
+            column: None,
+        }];
+
+        let changed: HashSet<PathBuf> = HashSet::from([PathBuf::from("src/main.rs")]);
+        let filtered = filter_to_changed_files(diags, &changed);
+        assert_eq!(filtered.len(), 1);
     }
 
     #[test]

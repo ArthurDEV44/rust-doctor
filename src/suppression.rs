@@ -355,9 +355,8 @@ mod tests {
 
     #[test]
     fn test_apply_with_temp_file() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-suppression");
-        let _ = std::fs::create_dir_all(&dir);
-        let file_path = dir.join("test.rs");
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test.rs");
         std::fs::write(
             &file_path,
             "// rust-doctor-disable-next-line test-rule\nlet x = 1;\nlet y = 2;\n",
@@ -376,7 +375,7 @@ mod tests {
                 column: None,
             },
             Diagnostic {
-                file_path: file_path.clone(),
+                file_path,
                 rule: "other-rule".to_string(),
                 category: Category::Style,
                 severity: Severity::Warning,
@@ -387,12 +386,10 @@ mod tests {
             },
         ];
 
-        let (filtered, suppressed) = apply_inline_suppressions(diags, &dir);
+        let (filtered, suppressed) = apply_inline_suppressions(diags, dir.path());
         assert_eq!(suppressed, 1);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].rule, "other-rule");
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // --- find_line_comment_start ---

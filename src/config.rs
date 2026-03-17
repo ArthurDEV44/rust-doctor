@@ -46,52 +46,44 @@ pub struct ResolvedConfig {
 /// Load configuration from `rust-doctor.toml` (first priority) or
 /// `[package.metadata.rust-doctor]` in Cargo.toml (fallback).
 ///
-/// Returns `None` if no config is found. Prints warnings on parse errors
-/// and returns `None` to continue with defaults.
+/// Returns `Ok(None)` if no config is found. Returns `Err` on I/O or parse errors.
 pub fn load_file_config(
     project_root: &Path,
     cargo_metadata: Option<&serde_json::Value>,
-) -> Option<FileConfig> {
+) -> Result<Option<FileConfig>, crate::error::ConfigError> {
+    use crate::error::ConfigError;
+
     // Priority 1: rust-doctor.toml in project root
     let config_path = project_root.join("rust-doctor.toml");
     match std::fs::read_to_string(&config_path) {
-        Ok(content) => match toml::from_str::<FileConfig>(&content) {
-            Ok(config) => return Some(config),
-            Err(e) => {
-                eprintln!(
-                    "Warning: failed to parse rust-doctor.toml: {e}\nUsing default configuration."
-                );
-                return None;
-            }
-        },
+        Ok(content) => {
+            let config =
+                toml::from_str::<FileConfig>(&content).map_err(|source| ConfigError::Parse {
+                    path: config_path,
+                    source,
+                })?;
+            return Ok(Some(config));
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // File doesn't exist — fall through to Cargo.toml metadata
         }
-        Err(e) => {
-            eprintln!(
-                "Warning: could not read rust-doctor.toml: {e}\nUsing default configuration."
-            );
-            return None;
+        Err(source) => {
+            return Err(ConfigError::Io {
+                path: config_path,
+                source,
+            });
         }
     }
 
     // Priority 2: [package.metadata.rust-doctor] in Cargo.toml
     if let Some(metadata) = cargo_metadata {
-        let section = metadata.get("rust-doctor");
-        if let Some(section) = section {
-            match serde_json::from_value::<FileConfig>(section.clone()) {
-                Ok(config) => return Some(config),
-                Err(e) => {
-                    eprintln!(
-                        "Warning: failed to parse [package.metadata.rust-doctor] in Cargo.toml: {e}\nUsing default configuration."
-                    );
-                    return None;
-                }
-            }
+        if let Some(section) = metadata.get("rust-doctor") {
+            let config = serde_json::from_value::<FileConfig>(section.clone())?;
+            return Ok(Some(config));
         }
     }
 
-    None
+    Ok(None)
 }
 
 /// Parse a `fail_on` string from config into a `FailOn` enum.
@@ -100,10 +92,11 @@ fn parse_fail_on(value: &str) -> Option<FailOn> {
     match value {
         "error" => Some(FailOn::Error),
         "warning" => Some(FailOn::Warning),
+        "info" => Some(FailOn::Info),
         "none" => Some(FailOn::None),
         _ => {
             eprintln!(
-                "Warning: invalid fail_on value '{value}' in config. Valid values: error, warning, none"
+                "Warning: invalid fail_on value '{value}' in config. Valid values: error, warning, info, none"
             );
             None
         }
@@ -273,21 +266,21 @@ mod tests {
                 "lint": false
             }
         });
-        let config = load_file_config(Path::new("/nonexistent"), Some(&json));
+        let config = load_file_config(Path::new("/nonexistent"), Some(&json)).unwrap();
         assert!(config.is_some());
         assert_eq!(config.unwrap().lint, Some(false));
     }
 
     #[test]
     fn test_load_file_config_no_sources() {
-        let config = load_file_config(Path::new("/nonexistent"), None);
+        let config = load_file_config(Path::new("/nonexistent"), None).unwrap();
         assert!(config.is_none());
     }
 
     #[test]
     fn test_load_file_config_empty_metadata() {
         let json = serde_json::json!({});
-        let config = load_file_config(Path::new("/nonexistent"), Some(&json));
+        let config = load_file_config(Path::new("/nonexistent"), Some(&json)).unwrap();
         assert!(config.is_none());
     }
 
@@ -416,9 +409,8 @@ mod tests {
 
     #[test]
     fn test_load_file_config_from_toml_file() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-config");
-        let _ = std::fs::create_dir_all(&dir);
-        let config_path = dir.join("rust-doctor.toml");
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("rust-doctor.toml");
         std::fs::write(
             &config_path,
             r#"
@@ -430,43 +422,35 @@ mod tests {
         )
         .unwrap();
 
-        let config = load_file_config(&dir, None);
+        let config = load_file_config(dir.path(), None).unwrap();
         assert!(config.is_some());
         let fc = config.unwrap();
         assert_eq!(fc.verbose, Some(true));
         assert_eq!(fc.fail_on, Some("warning".to_string()));
         assert_eq!(fc.ignore.rules, vec!["test-rule"]);
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn test_toml_file_takes_priority_over_metadata() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-config-priority");
-        let _ = std::fs::create_dir_all(&dir);
-        let config_path = dir.join("rust-doctor.toml");
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("rust-doctor.toml");
         std::fs::write(&config_path, "verbose = true\n").unwrap();
 
         let json = serde_json::json!({
             "rust-doctor": { "verbose": false }
         });
-        let config = load_file_config(&dir, Some(&json));
+        let config = load_file_config(dir.path(), Some(&json)).unwrap();
         assert!(config.is_some());
         assert_eq!(config.unwrap().verbose, Some(true));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn test_load_invalid_toml_file_returns_none() {
-        let dir = std::env::temp_dir().join("rust-doctor-test-bad-toml");
-        let _ = std::fs::create_dir_all(&dir);
-        let config_path = dir.join("rust-doctor.toml");
+    fn test_load_invalid_toml_file_returns_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("rust-doctor.toml");
         std::fs::write(&config_path, "not valid [[[toml").unwrap();
 
-        let config = load_file_config(&dir, None);
-        assert!(config.is_none());
-
-        let _ = std::fs::remove_dir_all(&dir);
+        let result = load_file_config(dir.path(), None);
+        assert!(result.is_err());
     }
 }

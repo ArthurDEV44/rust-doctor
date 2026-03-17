@@ -5,28 +5,16 @@ use crate::{audit, clippy, config, diff, machete, output, rules, scanner, suppre
 use std::path::PathBuf;
 use std::time::Duration;
 
-/// Known custom rule names for config validation.
-pub const CUSTOM_RULE_NAMES: &[&str] = &[
-    "unwrap-in-production",
-    "panic-in-library",
-    "box-dyn-error-in-public-api",
-    "result-unit-error",
-    "excessive-clone",
-    "string-from-literal",
-    "collect-then-iterate",
-    "large-enum-variant",
-    "unnecessary-allocation",
-    "hardcoded-secrets",
-    "unsafe-block-audit",
-    "sql-injection-risk",
-    "blocking-in-async",
-    "block-on-in-async",
-    "tokio-main-missing",
-    "tokio-spawn-without-move",
-    "axum-handler-not-async",
-    "actix-blocking-handler",
-    "unused-dependency",
-];
+/// Derive custom rule names from the rule registry at runtime.
+/// Includes the external "unused-dependency" rule which is not AST-based.
+pub fn custom_rule_names() -> Vec<String> {
+    let mut names: Vec<String> = rules::all_custom_rules()
+        .iter()
+        .map(|r| r.name().to_string())
+        .collect();
+    names.push("unused-dependency".to_string());
+    names
+}
 
 /// Run a complete scan on a discovered Rust project.
 ///
@@ -76,8 +64,9 @@ pub fn scan_project(
 // ---------------------------------------------------------------------------
 
 fn validate_config(resolved: &ResolvedConfig) {
-    let mut known_rules = clippy::known_lint_names();
-    known_rules.extend_from_slice(CUSTOM_RULE_NAMES);
+    let mut known_rules: Vec<&str> = clippy::known_lint_names();
+    let custom_names = custom_rule_names();
+    known_rules.extend(custom_names.iter().map(String::as_str));
     config::validate_ignored_rules(&resolved.ignore_rules, &known_rules);
 }
 
@@ -87,8 +76,7 @@ fn resolve_scan_roots(
     project_filter: &[String],
 ) -> Result<Vec<PathBuf>, crate::error::ScanError> {
     if project_info.is_workspace {
-        let members = workspace::resolve_members(&project_info.workspace_members, project_filter)
-            .map_err(crate::error::ScanError::Workspace)?;
+        let members = workspace::resolve_members(&project_info.workspace_members, project_filter)?;
         if resolved.verbose {
             eprintln!(
                 "Workspace: scanning {} of {} members",
@@ -289,6 +277,10 @@ fn build_result(
         .iter()
         .filter(|d| d.severity == Severity::Warning)
         .count();
+    let info_count = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Info)
+        .count();
     let (score, score_label) = output::calculate_score(&diagnostics);
 
     skipped_passes.sort();
@@ -303,5 +295,6 @@ fn build_result(
         skipped_passes,
         error_count,
         warning_count,
+        info_count,
     }
 }

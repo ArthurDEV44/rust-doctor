@@ -41,7 +41,7 @@ pub fn run_with_timeout(
             .recv_timeout(Duration::from_secs(timeout_secs))
             .is_err()
             && let Ok(mut c) = child_watcher.lock()
-            && let Ok(None) = c.try_wait()
+            && matches!(c.try_wait(), Ok(None))
         {
             let _ = c.kill();
             let _ = c.wait(); // Reap to avoid zombie
@@ -60,11 +60,10 @@ pub fn run_with_timeout(
     let _ = cancel_tx.send(());
     let _ = watcher.join();
 
-    let exit_code = if let Ok(mut c) = child.lock() {
-        c.wait().ok().and_then(|s| s.code())
-    } else {
-        None
-    };
+    let exit_code = child
+        .lock()
+        .ok()
+        .and_then(|mut c| c.wait().ok().and_then(|s| s.code()));
 
     Ok(ProcessOutput {
         stdout: output,
@@ -72,4 +71,3 @@ pub fn run_with_timeout(
         exit_code,
     })
 }
-

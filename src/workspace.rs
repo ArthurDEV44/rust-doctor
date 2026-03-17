@@ -1,12 +1,13 @@
 use crate::discovery::WorkspaceMember;
+use crate::error::WorkspaceError;
 
 /// Resolve which workspace members to scan based on `--project` filter.
 ///
-/// Returns `Ok(filtered_members)` or `Err` with available member names.
+/// Returns `Ok(filtered_members)` or `Err` with the unknown member name.
 pub fn resolve_members<'a>(
     members: &'a [WorkspaceMember],
     project_filter: &[String],
-) -> Result<Vec<&'a WorkspaceMember>, String> {
+) -> Result<Vec<&'a WorkspaceMember>, WorkspaceError> {
     if project_filter.is_empty() {
         // Scan all members
         return Ok(members.iter().collect());
@@ -20,10 +21,10 @@ pub fn resolve_members<'a>(
         if let Some(member) = members.iter().find(|m| m.name == *name) {
             selected.push(member);
         } else {
-            return Err(format!(
-                "Unknown workspace member '{name}'. Available members: {}",
-                available.join(", ")
-            ));
+            return Err(WorkspaceError::UnknownMember {
+                name: name.clone(),
+                available: available.join(", "),
+            });
         }
     }
 
@@ -78,7 +79,7 @@ mod tests {
         let filter = vec!["nonexistent".into()];
         let result = resolve_members(&members, &filter);
         assert!(result.is_err());
-        let err = result.unwrap_err();
+        let err = result.unwrap_err().to_string();
         assert!(err.contains("nonexistent"));
         assert!(err.contains("core"));
         assert!(err.contains("api"));

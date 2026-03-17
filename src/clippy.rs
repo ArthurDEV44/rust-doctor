@@ -448,8 +448,7 @@ fn lookup_lint(lint: &str) -> Option<(Category, Severity)> {
 fn map_lint_category(lint: &str) -> Category {
     match lint {
         "compiler-error" | "compiler-ice" => Category::Correctness,
-        _ => lookup_lint(lint)
-            .map_or(Category::Style, |(cat, _)| cat),
+        _ => lookup_lint(lint).map_or(Category::Style, |(cat, _)| cat),
     }
 }
 
@@ -458,8 +457,7 @@ fn map_lint_category(lint: &str) -> Category {
 fn resolve_severity(lint: &str, clippy_severity: Severity) -> Severity {
     match lint {
         "compiler-error" | "compiler-ice" => Severity::Error,
-        _ => lookup_lint(lint)
-            .map_or(clippy_severity, |(_, sev)| sev),
+        _ => lookup_lint(lint).map_or(clippy_severity, |(_, sev)| sev),
     }
 }
 
@@ -495,15 +493,18 @@ impl AnalysisPass for ClippyPass {
     }
 }
 
-/// Check if `cargo clippy` is available.
+/// Check if `cargo clippy` is available. Result is cached for the process lifetime.
 fn is_clippy_available() -> bool {
-    Command::new("cargo")
-        .args(["clippy", "--version"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        Command::new("cargo")
+            .args(["clippy", "--version"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
 }
 
 /// Build the full list of `-W` flags for clippy, including group-level
@@ -576,7 +577,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             .recv_timeout(Duration::from_secs(CLIPPY_TIMEOUT_SECS))
             .is_err()
             && let Ok(mut c) = child_watcher.lock()
-            && let Ok(None) = c.try_wait()
+            && matches!(c.try_wait(), Ok(None))
         {
             let _ = c.kill();
             let _ = c.wait(); // Reap the child to avoid zombie process
@@ -623,14 +624,16 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 
                 // Extract primary span
                 let primary_span = diag.spans.iter().find(|s| s.is_primary);
-                let (file_path, line, column) = match primary_span {
-                    Some(span) => (
-                        PathBuf::from(&span.file_name),
-                        Some(span.line_start as u32),
-                        Some(span.column_start as u32),
-                    ),
-                    None => (PathBuf::from("<unknown>"), None, None),
-                };
+                let (file_path, line, column) = primary_span.map_or_else(
+                    || (PathBuf::from("<unknown>"), None, None),
+                    |span| {
+                        (
+                            PathBuf::from(&span.file_name),
+                            Some(span.line_start as u32),
+                            Some(span.column_start as u32),
+                        )
+                    },
+                );
 
                 // Apply registry: category and severity override
                 let category = map_lint_category(&rule);
@@ -699,12 +702,19 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 .find(|l| l.starts_with("error"))
                 .unwrap_or("project failed to compile");
 
+            // Truncate to 200 chars to avoid leaking verbose internal details
+            let truncated = if first_error.len() > 200 {
+                format!("{}…", &first_error[..200])
+            } else {
+                first_error.to_string()
+            };
+
             diagnostics.push(Diagnostic {
                 file_path: PathBuf::from("Cargo.toml"),
                 rule: "compiler-error".to_string(),
                 category: Category::Correctness,
                 severity: Severity::Error,
-                message: first_error.to_string(),
+                message: truncated,
                 help: Some("Run `cargo build` to see the full error output".to_string()),
                 line: None,
                 column: None,

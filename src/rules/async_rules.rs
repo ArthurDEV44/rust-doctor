@@ -95,6 +95,12 @@ impl CustomRule for BlockingInAsync {
     fn severity(&self) -> Severity {
         Severity::Error
     }
+    fn description(&self) -> &'static str {
+        "Flags blocking `std` calls inside `async fn`: `std::thread::sleep`, `std::fs::*`, `std::net::*`. These block the async runtime's thread pool, reducing concurrency and potentially causing deadlocks."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use async equivalents: `tokio::time::sleep`, `tokio::fs::*`, `tokio::net::*`. For CPU-bound work, use `tokio::task::spawn_blocking`."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = BlockingVisitor {
             path,
@@ -244,6 +250,12 @@ impl CustomRule for BlockOnInAsync {
     fn severity(&self) -> Severity {
         Severity::Error
     }
+    fn description(&self) -> &'static str {
+        "Flags `Runtime::block_on()` or `futures::executor::block_on()` called inside `async fn`. This blocks the current thread waiting for a future, which can deadlock the runtime if all worker threads are blocked."
+    }
+    fn fix_hint(&self) -> &'static str {
+        "Use `.await` instead of `block_on()`. If you need to call async code from sync context, restructure to avoid nesting runtimes."
+    }
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic> {
         let mut visitor = BlockOnVisitor {
             path,
@@ -355,11 +367,11 @@ mod tests {
     fn test_thread_sleep_in_async_detected() {
         let diags = check(
             &BlockingInAsync,
-            r#"
+            r"
             async fn do_work() {
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "blocking-in-async");
@@ -371,11 +383,11 @@ mod tests {
     fn test_thread_sleep_in_sync_fn_not_flagged() {
         let diags = check(
             &BlockingInAsync,
-            r#"
+            r"
             fn do_work() {
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
@@ -384,12 +396,12 @@ mod tests {
     fn test_short_thread_sleep_in_async() {
         let diags = check(
             &BlockingInAsync,
-            r#"
+            r"
             use std::thread;
             async fn do_work() {
                 thread::sleep(std::time::Duration::from_secs(1));
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
     }
@@ -412,13 +424,13 @@ mod tests {
     fn test_spawn_blocking_not_flagged() {
         let diags = check(
             &BlockingInAsync,
-            r#"
+            r"
             async fn do_work() {
                 tokio::task::spawn_blocking(|| {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 });
             }
-            "#,
+            ",
         );
         // thread::sleep inside spawn_blocking is correct usage
         assert!(diags.is_empty());
@@ -430,12 +442,12 @@ mod tests {
     fn test_block_on_method_in_async_detected() {
         let diags = check(
             &BlockOnInAsync,
-            r#"
+            r"
             async fn do_work() {
                 let rt = tokio::runtime::Handle::current();
                 rt.block_on(async { 42 });
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "block-on-in-async");
@@ -446,11 +458,11 @@ mod tests {
     fn test_block_on_call_in_async_detected() {
         let diags = check(
             &BlockOnInAsync,
-            r#"
+            r"
             async fn do_work() {
                 futures::executor::block_on(async { 42 });
             }
-            "#,
+            ",
         );
         assert_eq!(diags.len(), 1);
     }
@@ -459,11 +471,11 @@ mod tests {
     fn test_block_on_in_sync_fn_not_flagged() {
         let diags = check(
             &BlockOnInAsync,
-            r#"
+            r"
             fn main() {
                 futures::executor::block_on(async { 42 });
             }
-            "#,
+            ",
         );
         assert!(diags.is_empty());
     }
