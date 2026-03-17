@@ -15,7 +15,6 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 // ---------------------------------------------------------------------------
 // MCP server struct
@@ -69,6 +68,12 @@ pub struct ScoreInput {
         description = "Absolute path to the Rust project directory to score. Must contain a Cargo.toml file."
     )]
     pub directory: String,
+    /// Run in offline mode (no network fetches). Defaults to true in MCP mode for security.
+    #[serde(default = "default_mcp_offline")]
+    #[schemars(
+        description = "When true, cargo-audit runs with --no-fetch (no network access). Defaults to true in MCP mode."
+    )]
+    pub offline: bool,
 }
 
 #[derive(Deserialize, Serialize, JsonSchema)]
@@ -192,7 +197,13 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
         })
         .await
         .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
-        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        .map_err(|e| {
+            eprintln!("MCP scan error: {e}");
+            McpError::internal_error(
+                "scan failed — check project compiles with `cargo check`",
+                None,
+            )
+        })?;
 
         // Send completion progress
         if let Some(ref token) = progress_token {
@@ -238,12 +249,19 @@ If you also need the diagnostics, use scan instead — it includes the score too
         let (_dir, project_info, resolved) = discover_and_resolve(&input.directory, false)?;
 
         // Run the CPU-bound scan on a blocking thread to avoid starving the tokio runtime
+        let offline = input.offline;
         let result = tokio::task::spawn_blocking(move || {
-            scan::scan_project(&project_info, &resolved, false, &[], true)
+            scan::scan_project(&project_info, &resolved, offline, &[], true)
         })
         .await
         .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
-        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        .map_err(|e| {
+            eprintln!("MCP score error: {e}");
+            McpError::internal_error(
+                "scan failed — check project compiles with `cargo check`",
+                None,
+            )
+        })?;
 
         Ok(Json(ScoreOutput {
             score: result.score,
@@ -430,7 +448,7 @@ fn discover_and_resolve(
     ),
     McpError,
 > {
-    // Validate directory scope: must be under $HOME
+    // Validate directory scope: must be under $HOME (fail closed)
     let canonical = std::path::Path::new(directory)
         .canonicalize()
         .map_err(|_| {
@@ -438,36 +456,39 @@ fn discover_and_resolve(
         })?;
 
     if let Ok(home) = std::env::var("HOME") {
-        let home_path = std::path::Path::new(&home);
-        if let Ok(home_canonical) = home_path.canonicalize() {
-            if !canonical.starts_with(&home_canonical) {
-                return Err(McpError::invalid_params(
-                    "directory must be under $HOME",
-                    None,
-                ));
-            }
-        }
-    } else {
-        eprintln!("Warning: $HOME not set, skipping directory scope validation");
-    }
-
-    let (target_dir, project_info, file_config) =
-        discovery::bootstrap_project(Path::new(directory), false).map_err(|e| {
-            // Sanitize: return a hint but NOT the raw error text (which may contain paths)
-            let hint = match &e {
-                crate::error::BootstrapError::InvalidDirectory { .. } => {
-                    "invalid directory — use an absolute path like /home/user/project"
-                }
-                crate::error::BootstrapError::NoCargo { .. } => {
-                    "no Cargo.toml found — ensure the directory contains a Cargo.toml"
-                }
-                crate::error::BootstrapError::Discovery(_) => {
-                    "project discovery failed — check that `cargo metadata` runs successfully"
-                }
-            };
-            eprintln!("MCP bootstrap error: {e}");
-            McpError::invalid_params(hint.to_string(), None)
+        let home_canonical = std::path::Path::new(&home).canonicalize().map_err(|_| {
+            McpError::internal_error(
+                "$HOME path is invalid; cannot validate directory scope",
+                None,
+            )
         })?;
+        if !canonical.starts_with(&home_canonical) {
+            return Err(McpError::invalid_params(
+                "directory must be under $HOME",
+                None,
+            ));
+        }
+    }
+    // If $HOME is not set (e.g. containers): allow — no scope to validate against
+
+    // Pass the already-canonicalized path to avoid TOCTOU between validation and use
+    let (target_dir, project_info, file_config) = discovery::bootstrap_project(&canonical, false)
+        .map_err(|e| {
+        // Sanitize: return a hint but NOT the raw error text (which may contain paths)
+        let hint = match &e {
+            crate::error::BootstrapError::InvalidDirectory { .. } => {
+                "invalid directory — use an absolute path like /home/user/project"
+            }
+            crate::error::BootstrapError::NoCargo { .. } => {
+                "no Cargo.toml found — ensure the directory contains a Cargo.toml"
+            }
+            crate::error::BootstrapError::Discovery(_) => {
+                "project discovery failed — check that `cargo metadata` runs successfully"
+            }
+        };
+        eprintln!("MCP bootstrap error: {e}");
+        McpError::invalid_params(hint.to_string(), None)
+    })?;
 
     let effective_config = if ignore_project_config {
         None

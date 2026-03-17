@@ -703,8 +703,10 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 .unwrap_or("project failed to compile");
 
             // Truncate to 200 chars to avoid leaking verbose internal details
-            let truncated = if first_error.len() > 200 {
-                format!("{}…", &first_error[..200])
+            let truncated: String = if first_error.chars().count() > 200 {
+                let mut s: String = first_error.chars().take(200).collect();
+                s.push('…');
+                s
             } else {
                 first_error.to_string()
             };
