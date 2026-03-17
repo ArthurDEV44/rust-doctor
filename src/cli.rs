@@ -41,10 +41,6 @@ pub struct Cli {
     #[arg(long, conflicts_with_all = ["score", "json"])]
     pub mcp: bool,
 
-    /// Skip all interactive prompts (auto-yes)
-    #[arg(short = 'y', long = "yes")]
-    pub yes: bool,
-
     /// Scan only specific workspace members (comma-separated)
     #[arg(long, value_delimiter = ',', value_name = "NAMES", value_parser = parse_non_empty)]
     pub project: Vec<String>,
@@ -78,34 +74,6 @@ impl std::fmt::Display for FailOn {
             Self::None => write!(f, "none"),
         }
     }
-}
-
-/// Environment variables that indicate an automated/CI environment.
-/// When any of these are set, interactive prompts are skipped.
-#[allow(dead_code)] // Used by should_skip_prompts — reserved for US-017 interactive mode
-const AUTOMATED_ENV_VARS: &[&str] = &["CI", "CLAUDECODE", "CURSOR_AGENT", "CODEX_CI"];
-
-/// Returns `true` if running in a CI or automated agent environment.
-#[allow(dead_code)] // Reserved for US-017 interactive mode
-pub fn is_automated_environment() -> bool {
-    check_automated_env(|var| std::env::var_os(var).is_some())
-}
-
-/// Testable CI detection — accepts a lookup function to avoid env mutation in tests.
-#[allow(dead_code)] // Used by tests and is_automated_environment
-fn check_automated_env(lookup: impl Fn(&str) -> bool) -> bool {
-    AUTOMATED_ENV_VARS.iter().any(|var| lookup(var))
-}
-
-/// Returns `true` if interactive prompts should be skipped.
-///
-/// Prompts are skipped when:
-/// - `--yes` / `-y` flag is passed
-/// - A known CI/agent env var is set
-/// - stdin is not a TTY (e.g., piped input)
-#[allow(dead_code)] // Reserved for US-017 interactive mode
-pub fn should_skip_prompts(cli: &Cli) -> bool {
-    cli.yes || is_automated_environment() || !std::io::IsTerminal::is_terminal(&std::io::stdin())
 }
 
 #[cfg(test)]
@@ -147,18 +115,6 @@ mod tests {
     fn test_verbose_flag() {
         let cli = Cli::try_parse_from(["rust-doctor", "--verbose"]).unwrap();
         assert!(cli.verbose);
-    }
-
-    #[test]
-    fn test_yes_short_flag() {
-        let cli = Cli::try_parse_from(["rust-doctor", "-y"]).unwrap();
-        assert!(cli.yes);
-    }
-
-    #[test]
-    fn test_yes_long_flag() {
-        let cli = Cli::try_parse_from(["rust-doctor", "--yes"]).unwrap();
-        assert!(cli.yes);
     }
 
     #[test]
@@ -267,7 +223,6 @@ mod tests {
             "--fail-on",
             "warning",
             "--offline",
-            "-y",
             "--project",
             "core,api",
         ])
@@ -280,35 +235,6 @@ mod tests {
         assert_eq!(cli.diff, Some("develop".to_string()));
         assert_eq!(cli.fail_on, Some(FailOn::Warning));
         assert!(cli.offline);
-        assert!(cli.yes);
         assert_eq!(cli.project, vec!["core", "api"]);
-    }
-
-    // CI detection tests use check_automated_env with injected lookup
-    // to avoid unsafe env mutation and test races.
-
-    #[test]
-    fn test_ci_detection_with_ci_var() {
-        assert!(check_automated_env(|var| var == "CI"));
-    }
-
-    #[test]
-    fn test_ci_detection_with_claudecode_var() {
-        assert!(check_automated_env(|var| var == "CLAUDECODE"));
-    }
-
-    #[test]
-    fn test_ci_detection_with_cursor_agent_var() {
-        assert!(check_automated_env(|var| var == "CURSOR_AGENT"));
-    }
-
-    #[test]
-    fn test_ci_detection_with_codex_ci_var() {
-        assert!(check_automated_env(|var| var == "CODEX_CI"));
-    }
-
-    #[test]
-    fn test_ci_detection_no_vars_set() {
-        assert!(!check_automated_env(|_| false));
     }
 }

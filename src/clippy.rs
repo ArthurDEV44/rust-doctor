@@ -11,6 +11,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+// Note: clippy uses a streaming parser (Message::parse_stream) so it cannot use
+// the process::run_with_timeout helper which reads all stdout into a String.
+// The watchdog pattern is kept inline here for that reason.
+
 /// Timeout for clippy subprocess in seconds.
 const CLIPPY_TIMEOUT_SECS: u64 = 120;
 

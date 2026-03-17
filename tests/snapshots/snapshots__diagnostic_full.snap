@@ -1,0 +1,14 @@
+---
+source: tests/snapshots.rs
+expression: diag
+---
+{
+  "file_path": "src/main.rs",
+  "rule": "unwrap-in-production",
+  "category": "error-handling",
+  "severity": "warning",
+  "message": "Use of .unwrap() in production code",
+  "help": "Use ? operator or handle the error explicitly",
+  "line": 42,
+  "column": 10
+}

@@ -1,15 +1,12 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
+use crate::process;
 use crate::scanner::AnalysisPass;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 
 const AUDIT_TIMEOUT_SECS: u64 = 60;
+const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 
 /// cargo-audit analysis pass — checks dependencies for known CVEs.
 pub struct AuditPass {
@@ -26,7 +23,10 @@ impl AnalysisPass for AuditPass {
             eprintln!(
                 "Info: Install cargo-audit for vulnerability scanning: cargo install cargo-audit"
             );
-            return Ok(vec![]);
+            return Err(crate::error::PassError::Skipped {
+                pass: self.name().to_string(),
+                reason: "cargo-audit is not installed".to_string(),
+            });
         }
         run_audit(project_root, self.offline).map_err(|message| {
             crate::error::PassError::Failed {
@@ -52,7 +52,7 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
     if offline {
         args.push("--no-fetch");
     }
-    let mut child = Command::new("cargo")
+    let child = Command::new("cargo")
         .args(&args)
         .current_dir(project_root)
         .stdout(Stdio::piped())
@@ -60,70 +60,27 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
         .spawn()
         .map_err(|e| format!("failed to spawn cargo audit: {e}"))?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("failed to capture cargo-audit stdout")?;
+    let result = process::run_with_timeout(child, AUDIT_TIMEOUT_SECS, MAX_OUTPUT_BYTES)?;
 
-    // Cancellable timeout watchdog
-    let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
-    let child = Arc::new(Mutex::new(child));
-    let child_watcher = Arc::clone(&child);
-    let timed_out = Arc::new(AtomicBool::new(false));
-    let timed_out_watcher = Arc::clone(&timed_out);
-
-    let watcher = thread::spawn(move || {
-        if cancel_rx
-            .recv_timeout(Duration::from_secs(AUDIT_TIMEOUT_SECS))
-            .is_err()
-            && let Ok(mut c) = child_watcher.lock()
-            && let Ok(None) = c.try_wait()
-        {
-            let _ = c.kill();
-            let _ = c.wait(); // Reap the child to avoid zombie process
-            timed_out_watcher.store(true, Ordering::Relaxed);
-        }
-    });
-
-    // Read stdout with a cap to prevent OOM from pathological output
-    const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
-    let mut output = String::new();
-    {
-        use std::io::Read;
-        let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_string(&mut output);
-    }
-
-    // Cancel watchdog and reap child
-    let _ = cancel_tx.send(());
-    let _ = watcher.join();
-
-    let exit_status = if let Ok(mut c) = child.lock() {
-        c.wait().ok()
-    } else {
-        None
-    };
-
-    // Check timeout
-    if timed_out.load(Ordering::Relaxed) {
+    if result.timed_out {
         eprintln!("Warning: cargo-audit timed out after {AUDIT_TIMEOUT_SECS}s");
         return Ok(vec![]);
     }
 
     // Exit code 2 = operational error (no Cargo.lock, etc.)
-    if let Some(status) = exit_status
-        && status.code() == Some(2)
-    {
+    if result.exit_code == Some(2) {
         return Err(
             "cargo-audit encountered an error (missing Cargo.lock or fetch failure)".into(),
         );
     }
 
     // Parse JSON
+    let output = &result.stdout;
     if output.is_empty() {
         return Ok(vec![]);
     }
 
-    let report: AuditReport = serde_json::from_str(&output)
+    let report: AuditReport = serde_json::from_str(output)
         .map_err(|e| format!("failed to parse cargo-audit JSON: {e}"))?;
 
     let mut diagnostics = Vec::new();

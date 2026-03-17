@@ -1,26 +1,9 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
-use crate::rules::CustomRule;
+use crate::rules::{has_cfg_test, has_test_attr, CustomRule};
 use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
-use syn::{Attribute, Item, ReturnType, Type};
-
-/// Helper: check if an attribute list contains `#[test]`.
-fn has_test_attr(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("test"))
-}
-
-/// Helper: check if an attribute list contains `#[cfg(test)]`.
-fn has_cfg_test(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if !attr.path().is_ident("cfg") {
-            return false;
-        }
-        attr.parse_args::<syn::Ident>()
-            .map(|ident| ident == "test")
-            .unwrap_or(false)
-    })
-}
+use syn::{Item, ReturnType, Type};
 
 // ─── Rule 1: unwrap-in-production ───────────────────────────────────────────
 

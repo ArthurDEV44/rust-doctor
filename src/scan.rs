@@ -1,7 +1,9 @@
 use crate::config::ResolvedConfig;
-use crate::diagnostics::{ScanResult, Severity};
+use crate::diagnostics::{Diagnostic, ScanResult, Severity};
 use crate::discovery::ProjectInfo;
 use crate::{audit, clippy, config, diff, machete, output, rules, scanner, suppression, workspace};
+use std::path::PathBuf;
+use std::time::Duration;
 
 /// Known custom rule names for config validation.
 pub const CUSTOM_RULE_NAMES: &[&str] = &[
@@ -37,13 +39,54 @@ pub fn scan_project(
     project_filter: &[String],
     suppress_spinner: bool,
 ) -> Result<ScanResult, crate::error::ScanError> {
-    // Validate ignored rules
+    validate_config(resolved);
+
+    let scan_roots = resolve_scan_roots(project_info, resolved, project_filter)?;
+    log_project_info(project_info, resolved);
+
+    let diff_context = resolve_diff_context(project_info, resolved);
+
+    let (mut all_diagnostics, total_source_files, all_skipped_passes, total_elapsed) = run_passes(
+        project_info,
+        resolved,
+        &scan_roots,
+        diff_context.as_ref(),
+        offline,
+        suppress_spinner,
+    );
+
+    dedup_diagnostics(&mut all_diagnostics);
+
+    if let Some(ref ctx) = diff_context {
+        all_diagnostics = diff::filter_to_changed_files(all_diagnostics, &ctx.changed_files);
+    }
+
+    let all_diagnostics = apply_suppressions(all_diagnostics, project_info, resolved);
+
+    Ok(build_result(
+        all_diagnostics,
+        total_source_files,
+        all_skipped_passes,
+        total_elapsed,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline stages
+// ---------------------------------------------------------------------------
+
+fn validate_config(resolved: &ResolvedConfig) {
     let mut known_rules = clippy::known_lint_names();
     known_rules.extend_from_slice(CUSTOM_RULE_NAMES);
     config::validate_ignored_rules(&resolved.ignore_rules, &known_rules);
+}
 
-    // Resolve workspace members
-    let scan_roots: Vec<std::path::PathBuf> = if project_info.is_workspace {
+fn resolve_scan_roots(
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+    project_filter: &[String],
+) -> Result<Vec<PathBuf>, crate::error::ScanError> {
+    if project_info.is_workspace {
         let members = workspace::resolve_members(&project_info.workspace_members, project_filter)
             .map_err(crate::error::ScanError::Workspace)?;
         if resolved.verbose {
@@ -53,41 +96,47 @@ pub fn scan_project(
                 project_info.member_count
             );
         }
-        members.iter().map(|m| m.root_dir.clone()).collect()
+        Ok(members.iter().map(|m| m.root_dir.clone()).collect())
     } else {
         if !project_filter.is_empty() {
             eprintln!("Warning: --project is only applicable to Cargo workspaces; ignoring");
         }
-        vec![project_info.root_dir.clone()]
-    };
-
-    // Print project info
-    if resolved.verbose {
-        eprintln!(
-            "Project: {} v{} (edition {})",
-            project_info.name, project_info.version, project_info.edition
-        );
-        if !project_info.frameworks.is_empty() {
-            let fw_list: Vec<String> = project_info
-                .frameworks
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect();
-            eprintln!("Frameworks: {}", fw_list.join(", "));
-        }
-        if project_info.is_no_std {
-            eprintln!("Mode: no_std");
-        }
-        if project_info.has_build_script {
-            eprintln!("Build script: yes");
-        }
-        if let Some(ref rv) = project_info.rust_version {
-            eprintln!("MSRV: {rv}");
-        }
+        Ok(vec![project_info.root_dir.clone()])
     }
+}
 
-    // Resolve diff context
-    let diff_context = resolved.diff.as_ref().and_then(|base_hint| {
+fn log_project_info(project_info: &ProjectInfo, resolved: &ResolvedConfig) {
+    if !resolved.verbose {
+        return;
+    }
+    eprintln!(
+        "Project: {} v{} (edition {})",
+        project_info.name, project_info.version, project_info.edition
+    );
+    if !project_info.frameworks.is_empty() {
+        let fw_list: Vec<String> = project_info
+            .frameworks
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
+        eprintln!("Frameworks: {}", fw_list.join(", "));
+    }
+    if project_info.is_no_std {
+        eprintln!("Mode: no_std");
+    }
+    if project_info.has_build_script {
+        eprintln!("Build script: yes");
+    }
+    if let Some(ref rv) = project_info.rust_version {
+        eprintln!("MSRV: {rv}");
+    }
+}
+
+fn resolve_diff_context(
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+) -> Option<diff::DiffContext> {
+    let ctx = resolved.diff.as_ref().and_then(|base_hint| {
         match diff::resolve_diff(&project_info.root_dir, base_hint) {
             Ok(ctx) => Some(ctx),
             Err(e) => {
@@ -96,9 +145,8 @@ pub fn scan_project(
             }
         }
     });
-    let is_diff_mode = diff_context.is_some();
 
-    if let Some(ref ctx) = diff_context {
+    if let Some(ref ctx) = ctx {
         eprintln!(
             "Diff mode: scanning {} changed file(s) vs {}",
             ctx.changed_files.len(),
@@ -106,7 +154,15 @@ pub fn scan_project(
         );
     }
 
-    // Detect async runtime for conditional rule activation
+    ctx
+}
+
+fn build_passes(
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+    is_diff_mode: bool,
+    offline: bool,
+) -> Vec<Box<dyn scanner::AnalysisPass>> {
     let has_async_runtime = project_info.frameworks.iter().any(|f| {
         matches!(
             f,
@@ -116,48 +172,61 @@ pub fn scan_project(
         )
     });
 
-    // Scan each root (single project or workspace members)
+    let mut passes: Vec<Box<dyn scanner::AnalysisPass>> = Vec::new();
+
+    if resolved.lint {
+        passes.push(Box::new(clippy::ClippyPass));
+        passes.push(Box::new(rules::RuleEnginePass::new(
+            rules::error_handling::all_rules()
+                .into_iter()
+                .chain(rules::performance::all_rules())
+                .chain(rules::security::all_rules())
+                .chain(if has_async_runtime {
+                    rules::async_rules::all_rules()
+                } else {
+                    vec![]
+                })
+                .chain(rules::framework::rules_for_frameworks(
+                    &project_info.frameworks,
+                ))
+                .collect(),
+            resolved.ignore_files.clone(),
+        )));
+    }
+
+    if resolved.dependencies && !is_diff_mode {
+        passes.push(Box::new(audit::AuditPass { offline }));
+        passes.push(Box::new(machete::MachetePass));
+    }
+
+    passes
+}
+
+fn run_passes(
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+    scan_roots: &[PathBuf],
+    diff_context: Option<&diff::DiffContext>,
+    offline: bool,
+    suppress_spinner: bool,
+) -> (Vec<Diagnostic>, usize, Vec<String>, Duration) {
+    let is_diff_mode = diff_context.is_some();
     let mut all_diagnostics = Vec::new();
     let mut total_source_files = 0;
     let mut all_skipped_passes = Vec::new();
-    let mut total_elapsed = std::time::Duration::ZERO;
+    let mut total_elapsed = Duration::ZERO;
 
     // In diff mode, count changed files once (not per scan root)
-    if let Some(ref ctx) = diff_context {
+    if let Some(ctx) = diff_context {
         total_source_files = ctx.changed_files.len();
     }
 
-    for scan_root in &scan_roots {
+    for scan_root in scan_roots {
         if diff_context.is_none() {
             total_source_files += scanner::count_source_files(scan_root);
         }
 
-        // Build passes per scan root, respecting config flags
-        let mut passes: Vec<Box<dyn scanner::AnalysisPass>> = Vec::new();
-        if resolved.lint {
-            passes.push(Box::new(clippy::ClippyPass));
-            passes.push(Box::new(rules::RuleEnginePass::new(
-                rules::error_handling::all_rules()
-                    .into_iter()
-                    .chain(rules::performance::all_rules())
-                    .chain(rules::security::all_rules())
-                    .chain(if has_async_runtime {
-                        rules::async_rules::all_rules()
-                    } else {
-                        vec![]
-                    })
-                    .chain(rules::framework::rules_for_frameworks(
-                        &project_info.frameworks,
-                    ))
-                    .collect(),
-                resolved.ignore_files.clone(),
-            )));
-        }
-        if resolved.dependencies && !is_diff_mode {
-            passes.push(Box::new(audit::AuditPass { offline }));
-            passes.push(Box::new(machete::MachetePass));
-        }
-
+        let passes = build_passes(project_info, resolved, is_diff_mode, offline);
         let orchestrator = scanner::ScanOrchestrator::new(passes);
         let pass_result = orchestrator.run(scan_root, resolved, suppress_spinner);
 
@@ -166,15 +235,17 @@ pub fn scan_project(
         total_elapsed += pass_result.elapsed;
     }
 
-    // Deduplicate diagnostics from overlapping workspace scans.
-    // When a workspace root is also a member (e.g., members = [".", "sub"]),
-    // clippy at the root compiles sub as a dependency and lints it, then
-    // clippy runs again on sub's own Cargo.toml producing duplicates.
-    //
-    // The key includes `message` to avoid collapsing genuinely different
-    // diagnostics that share the same position (e.g., two unused deps in
-    // the same Cargo.toml both have rule="unused-dependency", line=None).
-    all_diagnostics.sort_by(|a, b| {
+    (
+        all_diagnostics,
+        total_source_files,
+        all_skipped_passes,
+        total_elapsed,
+    )
+}
+
+/// Deduplicate diagnostics from overlapping workspace scans.
+fn dedup_diagnostics(diagnostics: &mut Vec<Diagnostic>) {
+    diagnostics.sort_by(|a, b| {
         a.file_path
             .cmp(&b.file_path)
             .then(a.rule.cmp(&b.rule))
@@ -182,49 +253,55 @@ pub fn scan_project(
             .then(a.column.cmp(&b.column))
             .then(a.message.cmp(&b.message))
     });
-    all_diagnostics.dedup_by(|a, b| {
+    diagnostics.dedup_by(|a, b| {
         a.file_path == b.file_path
             && a.rule == b.rule
             && a.line == b.line
             && a.column == b.column
             && a.message == b.message
     });
+}
 
-    // In diff mode, filter to changed files
-    if let Some(ref ctx) = diff_context {
-        all_diagnostics = diff::filter_to_changed_files(all_diagnostics, &ctx.changed_files);
-    }
-
-    // Apply inline suppression comments
-    let (all_diagnostics, suppressed_count) =
-        suppression::apply_inline_suppressions(all_diagnostics, &project_info.root_dir);
+fn apply_suppressions(
+    diagnostics: Vec<Diagnostic>,
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+) -> Vec<Diagnostic> {
+    let (diagnostics, suppressed_count) =
+        suppression::apply_inline_suppressions(diagnostics, &project_info.root_dir);
     if resolved.verbose && suppressed_count > 0 {
         eprintln!("Suppressed {suppressed_count} diagnostic(s) via inline comments");
     }
+    diagnostics
+}
 
-    // Calculate final score
-    let error_count = all_diagnostics
+fn build_result(
+    diagnostics: Vec<Diagnostic>,
+    source_file_count: usize,
+    mut skipped_passes: Vec<String>,
+    elapsed: Duration,
+) -> ScanResult {
+    let error_count = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Error)
         .count();
-    let warning_count = all_diagnostics
+    let warning_count = diagnostics
         .iter()
         .filter(|d| d.severity == Severity::Warning)
         .count();
-    let (score, score_label) = output::calculate_score(&all_diagnostics);
+    let (score, score_label) = output::calculate_score(&diagnostics);
 
-    // Deduplicate skipped passes
-    all_skipped_passes.sort();
-    all_skipped_passes.dedup();
+    skipped_passes.sort();
+    skipped_passes.dedup();
 
-    Ok(ScanResult {
-        diagnostics: all_diagnostics,
+    ScanResult {
+        diagnostics,
         score,
         score_label,
-        source_file_count: total_source_files,
-        elapsed: total_elapsed,
-        skipped_passes: all_skipped_passes,
+        source_file_count,
+        elapsed,
+        skipped_passes,
         error_count,
         warning_count,
-    })
+    }
 }

@@ -34,6 +34,9 @@ pub enum PassError {
 
     #[error("{pass}: analysis pass panicked")]
     Panicked { pass: String },
+
+    #[error("{pass}: skipped ({reason})")]
+    Skipped { pass: String, reason: String },
 }
 
 /// Errors from the MCP server tool handlers.

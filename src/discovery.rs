@@ -134,7 +134,10 @@ pub fn discover_project(
     let name = primary.name.clone();
     let version = primary.version.to_string();
     let edition = primary.edition.as_str().to_string();
-    let rust_version = primary.rust_version.as_ref().map(std::string::ToString::to_string);
+    let rust_version = primary
+        .rust_version
+        .as_ref()
+        .map(std::string::ToString::to_string);
 
     // Detect build script
     let has_build_script = primary
@@ -165,11 +168,10 @@ pub fn discover_project(
         .iter()
         .map(|pkg| WorkspaceMember {
             name: pkg.name.clone(),
-            root_dir: PathBuf::from(
-                pkg.manifest_path
-                    .parent()
-                    .map_or(workspace_root.as_path(), cargo_metadata::camino::Utf8Path::as_std_path),
-            ),
+            root_dir: PathBuf::from(pkg.manifest_path.parent().map_or(
+                workspace_root.as_path(),
+                cargo_metadata::camino::Utf8Path::as_std_path,
+            )),
         })
         .collect();
 
@@ -248,6 +250,38 @@ fn file_declares_no_std(path: &Path) -> bool {
         }
     }
     false
+}
+
+/// Validate a directory, discover the project, and load file config.
+///
+/// Shared bootstrap logic used by both the CLI entry point and the MCP server.
+/// Returns the canonicalized directory, project info, and file config.
+pub fn bootstrap_project(
+    directory: &Path,
+    offline: bool,
+) -> Result<(PathBuf, ProjectInfo, Option<crate::config::FileConfig>), crate::error::McpToolError> {
+    let target_dir = directory.canonicalize().map_err(|source| {
+        crate::error::McpToolError::InvalidDirectory {
+            path: directory.display().to_string(),
+            source,
+        }
+    })?;
+
+    let cargo_toml = target_dir.join("Cargo.toml");
+    if !cargo_toml.try_exists().unwrap_or(false) {
+        return Err(crate::error::McpToolError::NoCargo {
+            path: target_dir.clone(),
+        });
+    }
+
+    let project_info = discover_project(&cargo_toml, offline)?;
+
+    let file_config = crate::config::load_file_config(
+        &project_info.root_dir,
+        Some(&project_info.package_metadata),
+    );
+
+    Ok((target_dir, project_info, file_config))
 }
 
 #[cfg(test)]

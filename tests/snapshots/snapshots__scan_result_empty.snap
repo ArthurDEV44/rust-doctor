@@ -1,0 +1,14 @@
+---
+source: tests/snapshots.rs
+expression: result
+---
+{
+  "diagnostics": [],
+  "score": 100,
+  "score_label": "Great",
+  "source_file_count": 15,
+  "elapsed": 1.234,
+  "skipped_passes": [],
+  "error_count": 0,
+  "warning_count": 0
+}

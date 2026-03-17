@@ -1,17 +1,24 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
-use crate::rules::CustomRule;
+use crate::rules::{has_cfg_test, has_test_attr, CustomRule};
 use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 // ─── Rule 1: excessive-clone ────────────────────────────────────────────────
 
-/// Flags `.clone()` calls as a review prompt.
+/// Flags excessive `.clone()` calls as a review prompt.
 /// Without type information, this rule cannot distinguish Copy-type clones
-/// from necessary non-Copy clones. It serves as a heuristic — use
-/// `clippy::clone_on_copy` (in the clippy pass) for precise Copy-type detection.
+/// from necessary non-Copy clones. It uses heuristics to reduce false positives:
+///
+/// - Ignores clones inside test functions and `#[cfg(test)]` modules
+/// - Only reports when a file has 3+ clone calls (isolated clones are usually intentional)
+/// - Uses `clippy::clone_on_copy` (in the clippy pass) for precise Copy-type detection
+///
 /// Suppress with `// rust-doctor-disable-next-line excessive-clone` for reviewed clones.
 pub struct ExcessiveClone;
+
+/// Minimum number of clone calls in a file before reporting.
+const CLONE_THRESHOLD: usize = 3;
 
 impl CustomRule for ExcessiveClone {
     fn name(&self) -> &'static str {
@@ -27,20 +34,43 @@ impl CustomRule for ExcessiveClone {
         let mut visitor = CloneVisitor {
             path,
             diagnostics: Vec::new(),
+            in_test: false,
         };
         visitor.visit_file(syntax);
-        visitor.diagnostics
+        // Only report if the file has enough clones to suggest a pattern issue
+        if visitor.diagnostics.len() >= CLONE_THRESHOLD {
+            visitor.diagnostics
+        } else {
+            Vec::new()
+        }
     }
 }
 
 struct CloneVisitor<'a> {
     path: &'a Path,
     diagnostics: Vec<Diagnostic>,
+    in_test: bool,
 }
 
 impl<'ast> Visit<'ast> for CloneVisitor<'_> {
+    fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
+        let was_in_test = self.in_test;
+        if has_test_attr(&i.attrs) {
+            self.in_test = true;
+        }
+        syn::visit::visit_item_fn(self, i);
+        self.in_test = was_in_test;
+    }
+
+    fn visit_item_mod(&mut self, i: &'ast syn::ItemMod) {
+        if has_cfg_test(&i.attrs) {
+            return; // Skip entire #[cfg(test)] modules
+        }
+        syn::visit::visit_item_mod(self, i);
+    }
+
     fn visit_expr_method_call(&mut self, i: &'ast syn::ExprMethodCall) {
-        if i.method == "clone" && i.args.is_empty() {
+        if !self.in_test && i.method == "clone" && i.args.is_empty() {
             let span = i.method.span();
             self.diagnostics.push(Diagnostic {
                 file_path: self.path.to_path_buf(),
@@ -78,6 +108,7 @@ impl CustomRule for StringFromLiteral {
         let mut visitor = StringLiteralVisitor {
             path,
             diagnostics: Vec::new(),
+            in_test: false,
         };
         visitor.visit_file(syntax);
         visitor.diagnostics
@@ -87,12 +118,30 @@ impl CustomRule for StringFromLiteral {
 struct StringLiteralVisitor<'a> {
     path: &'a Path,
     diagnostics: Vec<Diagnostic>,
+    in_test: bool,
 }
 
 impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
+    fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
+        let was_in_test = self.in_test;
+        if has_test_attr(&i.attrs) {
+            self.in_test = true;
+        }
+        syn::visit::visit_item_fn(self, i);
+        self.in_test = was_in_test;
+    }
+
+    fn visit_item_mod(&mut self, i: &'ast syn::ItemMod) {
+        if has_cfg_test(&i.attrs) {
+            return; // Skip entire #[cfg(test)] modules
+        }
+        syn::visit::visit_item_mod(self, i);
+    }
+
     fn visit_expr_method_call(&mut self, i: &'ast syn::ExprMethodCall) {
         // "literal".to_string()
-        if i.method == "to_string"
+        if !self.in_test
+            && i.method == "to_string"
             && i.args.is_empty()
             && matches!(i.receiver.as_ref(), syn::Expr::Lit(lit) if matches!(lit.lit, syn::Lit::Str(_)))
         {
@@ -115,7 +164,9 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
 
     fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
         // String::from("literal")
-        if let syn::Expr::Path(func_path) = i.func.as_ref() {
+        if !self.in_test
+            && let syn::Expr::Path(func_path) = i.func.as_ref()
+        {
             let segments: Vec<String> = func_path
                 .path
                 .segments
@@ -392,7 +443,26 @@ mod tests {
     // --- excessive-clone ---
 
     #[test]
-    fn test_clone_detected() {
+    fn test_clone_detected_above_threshold() {
+        // 3+ clones in production code should trigger the rule
+        let diags = check(
+            &ExcessiveClone,
+            r#"
+            fn main() {
+                let x = vec![1, 2, 3];
+                let a = x.clone();
+                let b = x.clone();
+                let c = x.clone();
+            }
+            "#,
+        );
+        assert_eq!(diags.len(), 3);
+        assert_eq!(diags[0].rule, "excessive-clone");
+    }
+
+    #[test]
+    fn test_clone_below_threshold_not_reported() {
+        // 1-2 clones are considered intentional and not reported
         let diags = check(
             &ExcessiveClone,
             r#"
@@ -402,8 +472,44 @@ mod tests {
             }
             "#,
         );
-        assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].rule, "excessive-clone");
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn test_clone_in_test_code_ignored() {
+        let diags = check(
+            &ExcessiveClone,
+            r#"
+            #[test]
+            fn test_something() {
+                let x = vec![1, 2, 3];
+                let a = x.clone();
+                let b = x.clone();
+                let c = x.clone();
+                let d = x.clone();
+            }
+            "#,
+        );
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn test_clone_in_cfg_test_module_ignored() {
+        let diags = check(
+            &ExcessiveClone,
+            r#"
+            #[cfg(test)]
+            mod tests {
+                fn helper() {
+                    let x = vec![1];
+                    let a = x.clone();
+                    let b = x.clone();
+                    let c = x.clone();
+                }
+            }
+            "#,
+        );
+        assert!(diags.is_empty());
     }
 
     #[test]

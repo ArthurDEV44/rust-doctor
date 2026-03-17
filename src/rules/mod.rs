@@ -6,14 +6,33 @@ pub mod security;
 
 use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::scanner::{self, AnalysisPass};
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::GlobSet;
 use rayon::prelude::*;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
+// ─── Shared helpers for test-code detection ─────────────────────────────────
+
+/// Check if an attribute list contains `#[test]`.
+pub(crate) fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident("test"))
+}
+
+/// Check if an attribute list contains `#[cfg(test)]`.
+pub(crate) fn has_cfg_test(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("cfg") {
+            return false;
+        }
+        attr.parse_args::<syn::Ident>()
+            .is_ok_and(|ident| ident == "test")
+    })
+}
+
 /// Trait for custom AST-based rules that clippy doesn't cover.
 ///
 /// Rules must be `Send + Sync` for parallel file processing.
+#[allow(dead_code)] // methods used by implementors in sub-modules
 pub trait CustomRule: Send + Sync {
     /// Unique rule identifier (e.g. "unwrap-in-production").
     fn name(&self) -> &str;
@@ -66,20 +85,20 @@ impl RuleEngine {
         &self,
         project_root: &Path,
         ignore_files: &[String],
-    ) -> Result<Vec<Diagnostic>, String> {
+    ) -> Vec<Diagnostic> {
         if self.rules.is_empty() {
-            return Ok(vec![]);
+            return vec![];
         }
 
         // Collect .rs files
         let src_dir = project_root.join("src");
         if !src_dir.is_dir() {
-            return Ok(vec![]);
+            return vec![];
         }
 
         let files = scanner::collect_rs_files(&src_dir);
         if files.is_empty() {
-            return Ok(vec![]);
+            return vec![];
         }
 
         // Build ignore glob set
@@ -124,7 +143,7 @@ impl RuleEngine {
             })
             .collect();
 
-        Ok(diagnostics)
+        diagnostics
     }
 }
 
@@ -154,18 +173,7 @@ fn run_rule_safely(rule: &dyn CustomRule, syntax: &syn::File, path: &Path) -> Ve
 
 
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
-    let mut builder = GlobSetBuilder::new();
-    for pattern in patterns {
-        match Glob::new(pattern) {
-            Ok(glob) => {
-                builder.add(glob);
-            }
-            Err(e) => {
-                eprintln!("Warning: invalid glob pattern '{pattern}': {e}");
-            }
-        }
-    }
-    builder.build()
+    scanner::build_glob_set(patterns)
 }
 
 /// Analysis pass that wraps the rule engine for the scan orchestrator.
@@ -189,12 +197,7 @@ impl AnalysisPass for RuleEnginePass {
     }
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
-        self.engine
-            .scan(project_root, &self.ignore_files)
-            .map_err(|message| crate::error::PassError::Failed {
-                pass: "custom rules".to_string(),
-                message,
-            })
+        Ok(self.engine.scan(project_root, &self.ignore_files))
     }
 }
 
@@ -306,9 +309,8 @@ mod tests {
     fn test_rule_engine_with_no_rules() {
         let engine = RuleEngine::new(vec![]);
         let dir = make_temp_project("no-rules", &[("main.rs", "fn main() {}")]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let diags = engine.scan(&dir, &[]);
+        assert!(diags.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -318,9 +320,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        let diags = engine.scan(&dir, &[]);
+        assert!(diags.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -328,9 +329,7 @@ mod tests {
     fn test_rule_engine_runs_rules_on_files() {
         let dir = make_temp_project("runs-rules", &[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
-        let diags = result.unwrap();
+        let diags = engine.scan(&dir, &[]);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
         let _ = std::fs::remove_dir_all(&dir);
@@ -347,9 +346,8 @@ mod tests {
             ],
         );
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().len(), 3);
+        let diags = engine.scan(&dir, &[]);
+        assert_eq!(diags.len(), 3);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -357,9 +355,7 @@ mod tests {
     fn test_rule_engine_catches_panics() {
         let dir = make_temp_project("panic-catch", &[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(PanickingRule), Box::new(AlwaysWarnsRule)]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
-        let diags = result.unwrap();
+        let diags = engine.scan(&dir, &[]);
         // PanickingRule panicked and was caught; AlwaysWarnsRule still ran
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
@@ -370,10 +366,9 @@ mod tests {
     fn test_rule_engine_handles_parse_errors() {
         let dir = make_temp_project("parse-error", &[("main.rs", "this is not valid rust {{{{")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let result = engine.scan(&dir, &[]);
-        assert!(result.is_ok());
+        let diags = engine.scan(&dir, &[]);
         // File couldn't be parsed, so no diagnostics
-        assert!(result.unwrap().is_empty());
+        assert!(diags.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -388,9 +383,7 @@ mod tests {
         );
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
         let ignore = vec!["src/generated/**".to_string()];
-        let result = engine.scan(&dir, &ignore);
-        assert!(result.is_ok());
-        let diags = result.unwrap();
+        let diags = engine.scan(&dir, &ignore);
         assert_eq!(diags.len(), 1);
         assert!(diags[0].file_path.to_string_lossy().contains("main.rs"));
         let _ = std::fs::remove_dir_all(&dir);
@@ -400,8 +393,7 @@ mod tests {
     fn test_rule_engine_on_self() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let engine = RuleEngine::new(vec![Box::new(CountFnRule)]);
-        let result = engine.scan(manifest_dir, &[]);
-        assert!(result.is_ok());
+        let _diags = engine.scan(manifest_dir, &[]);
         // CountFnRule only fires if a file has >10 functions, so may or may not find issues
     }
 

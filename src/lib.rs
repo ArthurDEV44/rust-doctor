@@ -13,19 +13,23 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::used_underscore_binding)]
 
-pub mod audit;
+// Public API modules
 pub mod cli;
-pub mod clippy;
 pub mod config;
 pub mod diagnostics;
-pub mod error;
-pub mod diff;
 pub mod discovery;
-pub mod machete;
+pub mod error;
 pub mod mcp;
 pub mod output;
-pub mod rules;
 pub mod scan;
-pub mod scanner;
-pub mod suppression;
-pub mod workspace;
+
+// Internal implementation modules
+pub(crate) mod audit;
+pub(crate) mod clippy;
+pub(crate) mod diff;
+pub(crate) mod machete;
+pub(crate) mod process;
+pub(crate) mod rules;
+pub(crate) mod scanner;
+pub(crate) mod suppression;
+pub(crate) mod workspace;

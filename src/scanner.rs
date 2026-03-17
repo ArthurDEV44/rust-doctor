@@ -84,6 +84,10 @@ impl ScanOrchestrator {
         for result in results {
             match result.result {
                 Ok(diagnostics) => all_diagnostics.extend(diagnostics),
+                Err(crate::error::PassError::Skipped { pass, reason }) => {
+                    skipped_passes.push(format!("{pass} (not installed)"));
+                    eprintln!("Info: {pass}: {reason}");
+                }
                 Err(e) => {
                     skipped_passes.push(result.name.clone());
                     pass_errors.push(format!("{}: {}", result.name, e));
@@ -179,7 +183,7 @@ pub fn filter_diagnostics(
 
 /// Build a GlobSet from a list of pattern strings.
 /// Returns an error if any pattern is invalid.
-fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
+pub fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         match Glob::new(pattern) {
@@ -195,8 +199,34 @@ fn build_glob_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
 }
 
 /// Count the number of .rs source files under a directory.
+/// Uses a lightweight counter instead of collecting into a Vec.
 pub fn count_source_files(root: &Path) -> usize {
-    collect_rs_files(root).len()
+    fn count_recursive(dir: &Path) -> usize {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return 0;
+        };
+        let mut count = 0;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if meta.is_dir() {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if !name.starts_with('.')
+                    && name != "target"
+                    && name != "vendor"
+                    && name != "generated"
+                {
+                    count += count_recursive(&path);
+                }
+            } else if meta.is_file() && path.extension().is_some_and(|ext| ext == "rs") {
+                count += 1;
+            }
+        }
+        count
+    }
+    count_recursive(root)
 }
 
 /// Collect all `.rs` files recursively under a directory.

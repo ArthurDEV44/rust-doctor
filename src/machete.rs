@@ -1,14 +1,11 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
+use crate::process;
 use crate::scanner::AnalysisPass;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 
 const MACHETE_TIMEOUT_SECS: u64 = 30;
+const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 
 /// cargo-machete analysis pass — detects unused dependencies.
 pub struct MachetePass;
@@ -23,7 +20,10 @@ impl AnalysisPass for MachetePass {
             eprintln!(
                 "Info: Install cargo-machete for unused dependency detection: cargo install cargo-machete"
             );
-            return Ok(vec![]);
+            return Err(crate::error::PassError::Skipped {
+                pass: self.name().to_string(),
+                reason: "cargo-machete is not installed".to_string(),
+            });
         }
         run_machete(project_root).map_err(|message| crate::error::PassError::Failed {
             pass: "dependencies (cargo-machete)".to_string(),
@@ -43,7 +43,7 @@ fn is_machete_available() -> bool {
 }
 
 fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-    let mut child = Command::new("cargo")
+    let child = Command::new("cargo")
         .args(["machete", "--with-metadata"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
@@ -51,64 +51,20 @@ fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         .spawn()
         .map_err(|e| format!("failed to spawn cargo machete: {e}"))?;
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("failed to capture cargo-machete stdout")?;
+    let result = process::run_with_timeout(child, MACHETE_TIMEOUT_SECS, MAX_OUTPUT_BYTES)?;
 
-    // Cancellable timeout watchdog
-    let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
-    let child = Arc::new(Mutex::new(child));
-    let child_watcher = Arc::clone(&child);
-    let timed_out = Arc::new(AtomicBool::new(false));
-    let timed_out_watcher = Arc::clone(&timed_out);
-
-    let watcher = thread::spawn(move || {
-        if cancel_rx
-            .recv_timeout(Duration::from_secs(MACHETE_TIMEOUT_SECS))
-            .is_err()
-            && let Ok(mut c) = child_watcher.lock()
-            && let Ok(None) = c.try_wait()
-        {
-            let _ = c.kill();
-            let _ = c.wait(); // Reap the child to avoid zombie process
-            timed_out_watcher.store(true, Ordering::Relaxed);
-        }
-    });
-
-    // Read stdout with a cap to prevent OOM from pathological output
-    const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
-    let mut output = String::new();
-    {
-        use std::io::Read;
-        let _ = stdout.take(MAX_OUTPUT_BYTES).read_to_string(&mut output);
-    }
-
-    // Cancel watchdog and reap child
-    let _ = cancel_tx.send(());
-    let _ = watcher.join();
-
-    let exit_status = if let Ok(mut c) = child.lock() {
-        c.wait().ok()
-    } else {
-        None
-    };
-
-    // Check timeout
-    if timed_out.load(Ordering::Relaxed) {
+    if result.timed_out {
         eprintln!("Warning: cargo-machete timed out after {MACHETE_TIMEOUT_SECS}s");
         return Ok(vec![]);
     }
 
     // Exit code 2 = operational error
-    if let Some(status) = exit_status
-        && status.code() == Some(2)
-    {
+    if result.exit_code == Some(2) {
         return Err("cargo-machete encountered an error during analysis".into());
     }
 
     // Parse text output
-    Ok(parse_machete_output(&output))
+    Ok(parse_machete_output(&result.stdout))
 }
 
 /// Parse cargo-machete text output into diagnostics.

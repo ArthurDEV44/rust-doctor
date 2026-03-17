@@ -12,45 +12,17 @@ fn main() {
         return;
     }
 
-    // Resolve the target directory to an absolute path
-    let target_dir = match cli.directory.canonicalize() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!(
-                "Error: cannot access directory '{}': {e}",
-                cli.directory.display()
-            );
-            process::exit(1);
-        }
-    };
+    // Bootstrap: resolve directory, discover project, load file config
+    let (_target_dir, project_info, file_config) =
+        match discovery::bootstrap_project(&cli.directory, cli.offline) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                process::exit(1);
+            }
+        };
 
-    // Check that a Cargo.toml exists in the target directory
-    let cargo_toml = target_dir.join("Cargo.toml");
-    let cargo_toml_exists = cargo_toml.try_exists().unwrap_or(false);
-    if !cargo_toml_exists {
-        eprintln!(
-            "Error: no Cargo.toml found in '{}'\n\n\
-             rust-doctor must be run in a Rust project directory.\n\
-             Either pass a directory containing a Cargo.toml, or run from a project root:\n\n\
-             \x20 rust-doctor /path/to/project\n\
-             \x20 cd /path/to/project && rust-doctor",
-            target_dir.display()
-        );
-        process::exit(1);
-    }
-
-    // Discover project characteristics
-    let project_info = match discovery::discover_project(&cargo_toml, cli.offline) {
-        Ok(info) => info,
-        Err(e) => {
-            eprintln!("Error: {e}");
-            process::exit(1);
-        }
-    };
-
-    // Load configuration
-    let file_config =
-        config::load_file_config(&project_info.root_dir, Some(&project_info.package_metadata));
+    // Merge CLI flags with file config
     let resolved = config::resolve_config(&cli, file_config.as_ref());
 
     // Run scan

@@ -1,0 +1,16 @@
+---
+source: tests/snapshots.rs
+expression: categories
+---
+[
+  "error-handling",
+  "performance",
+  "security",
+  "correctness",
+  "architecture",
+  "dependencies",
+  "async",
+  "framework",
+  "cargo",
+  "style"
+]

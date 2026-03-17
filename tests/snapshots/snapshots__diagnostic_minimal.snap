@@ -1,0 +1,11 @@
+---
+source: tests/snapshots.rs
+expression: diag
+---
+{
+  "file_path": "Cargo.toml",
+  "rule": "unused-dependency",
+  "category": "dependencies",
+  "severity": "warning",
+  "message": "Unused dependency: serde"
+}

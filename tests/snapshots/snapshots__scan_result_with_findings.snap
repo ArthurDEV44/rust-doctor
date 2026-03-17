@@ -1,0 +1,37 @@
+---
+source: tests/snapshots.rs
+expression: result
+---
+{
+  "diagnostics": [
+    {
+      "file_path": "src/lib.rs",
+      "rule": "unwrap-in-production",
+      "category": "error-handling",
+      "severity": "warning",
+      "message": "Use of .unwrap() in production code",
+      "help": "Use ? operator",
+      "line": 10,
+      "column": 5
+    },
+    {
+      "file_path": "src/main.rs",
+      "rule": "hardcoded-secrets",
+      "category": "security",
+      "severity": "error",
+      "message": "Potential hardcoded secret in variable 'api_key'",
+      "help": "Use environment variables",
+      "line": 3,
+      "column": 9
+    }
+  ],
+  "score": 72,
+  "score_label": "Needs work",
+  "source_file_count": 8,
+  "elapsed": 5.678,
+  "skipped_passes": [
+    "dependencies (cargo-audit)"
+  ],
+  "error_count": 1,
+  "warning_count": 1
+}
