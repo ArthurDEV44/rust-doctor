@@ -192,13 +192,12 @@ pub fn resolve_config_defaults(file_config: Option<&FileConfig>) -> ResolvedConf
 
 /// Validate that ignored rule names are known. Prints warnings for unknown rules.
 /// Returns the list of unknown rule names found.
-pub fn validate_ignored_rules(ignored: &[String], known_rules: &[&str]) -> Vec<String> {
-    let mut unknown = Vec::new();
-    for rule in ignored {
-        if !known_rules.contains(&rule.as_str()) {
-            unknown.push(rule.clone());
-        }
-    }
+pub fn validate_ignored_rules<'a>(ignored: &'a [String], known_rules: &[&str]) -> Vec<&'a str> {
+    let unknown: Vec<&str> = ignored
+        .iter()
+        .filter(|rule| !known_rules.contains(&rule.as_str()))
+        .map(String::as_str)
+        .collect();
     if !unknown.is_empty() {
         eprintln!(
             "Warning: unknown rule(s) in ignore config: {}\nValid rules: {}",
