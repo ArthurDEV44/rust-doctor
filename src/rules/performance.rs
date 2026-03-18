@@ -229,7 +229,9 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
                 .collect();
             if segments == ["String", "from"]
                 && i.args.len() == 1
-                && i.args.first().is_some_and(|arg| matches!(arg, syn::Expr::Lit(lit) if matches!(lit.lit, syn::Lit::Str(_))))
+                && i.args.first().is_some_and(
+                    |arg| matches!(arg, syn::Expr::Lit(lit) if matches!(lit.lit, syn::Lit::Str(_))),
+                )
             {
                 let span = func_path.path.span();
                 self.diagnostics.push(Diagnostic {

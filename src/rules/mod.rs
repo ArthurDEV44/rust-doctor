@@ -198,11 +198,7 @@ impl RuleEngine {
                     }
                 };
 
-                (
-                    rel_path.to_path_buf(),
-                    content.clone(),
-                    diagnostics,
-                )
+                (rel_path.to_path_buf(), content.clone(), diagnostics)
             })
             .collect();
 
@@ -516,7 +512,8 @@ mod tests {
     #[test]
     fn test_rule_engine_pass() {
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
-        let pass = RuleEnginePass::with_config(vec![Box::new(AlwaysWarnsRule)], vec![], vec![], vec![]);
+        let pass =
+            RuleEnginePass::with_config(vec![Box::new(AlwaysWarnsRule)], vec![], vec![], vec![]);
         let result = pass.run(dir.path());
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);

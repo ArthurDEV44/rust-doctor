@@ -317,9 +317,11 @@ mod tests {
     fn test_get_cached_diagnostics_unknown_path() {
         let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let cache = ScanCache::new(config_hash);
-        assert!(cache
-            .get_cached_diagnostics(Path::new("nonexistent.rs"))
-            .is_none());
+        assert!(
+            cache
+                .get_cached_diagnostics(Path::new("nonexistent.rs"))
+                .is_none()
+        );
     }
 
     // ── Test 11: update overwrites previous entry ───────────────────────
