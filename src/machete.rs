@@ -22,7 +22,9 @@ impl AnalysisPass for MachetePass {
             );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
-                reason: "cargo-machete is not installed".to_string(),
+                reason: "cargo-machete is not installed — unused dependency detection disabled. \
+                         Install with: cargo install cargo-machete"
+                    .to_string(),
             });
         }
         run_machete(project_root).map_err(|message| crate::error::PassError::Failed {

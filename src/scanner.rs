@@ -87,6 +87,17 @@ impl ScanOrchestrator {
                 Err(crate::error::PassError::Skipped { pass, reason }) => {
                     skipped_passes.push(format!("{pass} (not installed)"));
                     eprintln!("Info: {pass}: {reason}");
+                    // Emit a visible diagnostic so MCP/JSON consumers see the skip
+                    all_diagnostics.push(crate::diagnostics::Diagnostic {
+                        file_path: std::path::PathBuf::from("Cargo.toml"),
+                        rule: "skipped-pass".to_string(),
+                        category: crate::diagnostics::Category::Cargo,
+                        severity: crate::diagnostics::Severity::Info,
+                        message: reason,
+                        help: None,
+                        line: None,
+                        column: None,
+                    });
                 }
                 Err(e) => {
                     skipped_passes.push(result.name.clone());

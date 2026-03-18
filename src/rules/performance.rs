@@ -41,6 +41,7 @@ impl CustomRule for ExcessiveClone {
             path,
             diagnostics: Vec::new(),
             in_test: false,
+            loop_depth: 0,
         };
         visitor.visit_file(syntax);
         // Only report if the file has enough clones to suggest a pattern issue
@@ -56,6 +57,8 @@ struct CloneVisitor<'a> {
     path: &'a Path,
     diagnostics: Vec<Diagnostic>,
     in_test: bool,
+    /// Nesting depth of loops (for/while/loop). Clones inside loops are hot-path.
+    loop_depth: u32,
 }
 
 impl<'ast> Visit<'ast> for CloneVisitor<'_> {
@@ -75,15 +78,45 @@ impl<'ast> Visit<'ast> for CloneVisitor<'_> {
         syn::visit::visit_item_mod(self, i);
     }
 
+    fn visit_expr_for_loop(&mut self, i: &'ast syn::ExprForLoop) {
+        self.loop_depth += 1;
+        syn::visit::visit_expr_for_loop(self, i);
+        self.loop_depth -= 1;
+    }
+
+    fn visit_expr_while(&mut self, i: &'ast syn::ExprWhile) {
+        self.loop_depth += 1;
+        syn::visit::visit_expr_while(self, i);
+        self.loop_depth -= 1;
+    }
+
+    fn visit_expr_loop(&mut self, i: &'ast syn::ExprLoop) {
+        self.loop_depth += 1;
+        syn::visit::visit_expr_loop(self, i);
+        self.loop_depth -= 1;
+    }
+
     fn visit_expr_method_call(&mut self, i: &'ast syn::ExprMethodCall) {
         if !self.in_test && i.method == "clone" && i.args.is_empty() {
             let span = i.method.span();
+            let in_loop = self.loop_depth > 0;
+            let (severity, message) = if in_loop {
+                (
+                    Severity::Warning,
+                    "`.clone()` inside a loop — may cause repeated heap allocations".to_string(),
+                )
+            } else {
+                (
+                    Severity::Info,
+                    "`.clone()` in non-loop context (cold path)".to_string(),
+                )
+            };
             self.diagnostics.push(Diagnostic {
                 file_path: self.path.to_path_buf(),
                 rule: "excessive-clone".to_string(),
                 category: Category::Performance,
-                severity: Severity::Warning,
-                message: "Potentially unnecessary .clone() call".to_string(),
+                severity,
+                message,
                 help: Some(
                     "If the type implements Copy, remove .clone(). Otherwise, consider borrowing or using Cow<T>".to_string(),
                 ),
@@ -109,6 +142,9 @@ impl CustomRule for StringFromLiteral {
     }
     fn severity(&self) -> Severity {
         Severity::Info
+    }
+    fn default_enabled(&self) -> bool {
+        false
     }
     fn description(&self) -> &'static str {
         "Flags `String::from(\"literal\")` and `\"literal\".to_string()`. These allocate on the heap when a `&str` reference might suffice."

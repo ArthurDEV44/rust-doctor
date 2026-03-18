@@ -25,7 +25,9 @@ impl AnalysisPass for AuditPass {
             );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
-                reason: "cargo-audit is not installed".to_string(),
+                reason: "cargo-audit is not installed — CVE scanning disabled. \
+                         Install with: cargo install cargo-audit"
+                    .to_string(),
             });
         }
         run_audit(project_root, self.offline).map_err(|message| crate::error::PassError::Failed {

@@ -55,6 +55,13 @@ pub trait CustomRule: Send + Sync {
     /// Actionable fix guidance for violations found by this rule.
     fn fix_hint(&self) -> &'static str;
 
+    /// Whether this rule is enabled by default. Rules returning `false` are
+    /// opt-in only — they run only when not listed in `ignore.rules` AND the
+    /// scanner explicitly includes opt-in rules (e.g., via `--strict` or config).
+    fn default_enabled(&self) -> bool {
+        true
+    }
+
     /// Check a parsed Rust file and return diagnostics.
     fn check_file(&self, syntax: &syn::File, path: &Path) -> Vec<Diagnostic>;
 

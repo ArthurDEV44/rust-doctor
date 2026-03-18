@@ -177,6 +177,7 @@ fn build_passes(
                 .chain(rules::framework::rules_for_frameworks(
                     &project_info.frameworks,
                 ))
+                .filter(|rule| rule.default_enabled())
                 .collect(),
             resolved.ignore_files.clone(),
         )));
