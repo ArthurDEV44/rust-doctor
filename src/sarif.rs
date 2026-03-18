@@ -147,10 +147,12 @@ fn diagnostic_to_result(d: &Diagnostic) -> Result_<'_> {
         start_column: d.column,
     });
 
-    let text = match &d.help {
-        Some(help) => Cow::Owned(format!("{} — {help}", d.message)),
-        None => Cow::Borrowed(d.message.as_str()),
-    };
+    let text = d
+        .help
+        .as_ref()
+        .map_or(Cow::Borrowed(d.message.as_str()), |help| {
+            Cow::Owned(format!("{} — {help}", d.message))
+        });
 
     Result_ {
         rule_id: &d.rule,
