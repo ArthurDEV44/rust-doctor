@@ -3,7 +3,6 @@
 use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::process;
 use crate::scanner::AnalysisPass;
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -53,10 +52,10 @@ fn is_geiger_available() -> bool {
 
 fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let child = Command::new("cargo")
-        .args(["geiger", "--output-format", "json", "--quiet"])
+        .args(["geiger"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("failed to spawn cargo geiger: {e}"))?;
 
@@ -68,62 +67,59 @@ fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         ));
     }
 
-    parse_geiger_output(&output.stdout)
+    parse_geiger_ascii(&output.stdout)
 }
 
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct GeigerOutput {
-    #[serde(default)]
-    packages: Vec<GeigerPackage>,
-}
-
-#[derive(Deserialize)]
-struct GeigerPackage {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    version: String,
-    #[serde(default)]
-    unsafety: GeigerUnsafety,
-}
-
-#[derive(Deserialize, Default)]
-#[allow(dead_code)]
-struct GeigerUnsafety {
-    #[serde(default)]
-    used: GeigerCounts,
-    #[serde(default)]
-    unused: GeigerCounts,
-}
-
-#[derive(Deserialize, Default)]
-#[allow(dead_code)]
-struct GeigerCounts {
-    #[serde(default)]
-    functions: CountPair,
-    #[serde(default)]
-    exprs: CountPair,
-}
-
-#[derive(Deserialize, Default)]
-#[allow(dead_code)]
-struct CountPair {
-    #[serde(default)]
-    safe: u64,
-    #[serde(rename = "unsafe", default)]
-    unsafe_: u64,
-}
-
-fn parse_geiger_output(json_str: &str) -> Result<Vec<Diagnostic>, String> {
-    let output: GeigerOutput = serde_json::from_str(json_str)
-        .map_err(|e| format!("failed to parse geiger output: {e}"))?;
-
+/// Parse cargo-geiger ASCII output.
+///
+/// Each dependency line looks like:
+/// `0/0  77/98  1/5  0/0  2/2  !  │ └── crate-name 1.2.3`
+///
+/// The columns are: Functions, Expressions, Impls, Traits, Methods.
+/// Format per column: `unsafe_used/total`. The `!` means unsafe detected.
+fn parse_geiger_ascii(output: &str) -> Result<Vec<Diagnostic>, String> {
     let mut diagnostics = Vec::new();
 
-    for pkg in &output.packages {
-        let unsafe_fns = pkg.unsafety.used.functions.unsafe_;
-        let unsafe_exprs = pkg.unsafety.used.exprs.unsafe_;
+    for line in output.lines() {
+        let trimmed = line.trim();
+
+        // Skip header, summary, empty, and non-dependency lines
+        if trimmed.is_empty()
+            || trimmed.starts_with("Functions")
+            || trimmed.starts_with("error")
+            || trimmed.starts_with("Failed")
+            || !trimmed.contains('/')
+        {
+            continue;
+        }
+
+        // Look for lines with `!` marker (unsafe detected) and a crate name
+        if !trimmed.contains('!') {
+            continue;
+        }
+
+        // Extract the crate name+version after tree-drawing characters
+        let crate_part = trimmed
+            .split('!')
+            .nth(1)
+            .unwrap_or("")
+            .trim()
+            .trim_start_matches(|c: char| "│├└─ ".contains(c))
+            .trim();
+
+        if crate_part.is_empty() {
+            continue;
+        }
+
+        // Extract unsafe function count (first column: "N/M")
+        let columns: Vec<&str> = trimmed.split_whitespace().collect();
+        if columns.len() < 5 {
+            continue;
+        }
+
+        // Parse first column (functions) and second (expressions) as unsafe/total
+        let unsafe_fns = parse_unsafe_count(columns[0]);
+        let unsafe_exprs = parse_unsafe_count(columns[1]);
         let total_unsafe = unsafe_fns + unsafe_exprs;
 
         if total_unsafe == 0 {
@@ -142,12 +138,10 @@ fn parse_geiger_output(json_str: &str) -> Result<Vec<Diagnostic>, String> {
             category: Category::Security,
             severity,
             message: format!(
-                "Dependency `{}@{}` uses unsafe: {} functions, {} expressions",
-                pkg.name, pkg.version, unsafe_fns, unsafe_exprs
+                "Dependency `{crate_part}` uses unsafe: {unsafe_fns} functions, {unsafe_exprs} expressions"
             ),
             help: Some(format!(
-                "Review unsafe usage in `{}` or consider alternatives",
-                pkg.name
+                "Review unsafe usage in `{crate_part}` or consider alternatives"
             )),
             line: None,
             column: None,
@@ -158,84 +152,56 @@ fn parse_geiger_output(json_str: &str) -> Result<Vec<Diagnostic>, String> {
     Ok(diagnostics)
 }
 
+/// Parse "N/M" format, returning N (the unsafe count).
+fn parse_unsafe_count(s: &str) -> u64 {
+    s.split('/')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_empty_output() {
-        let json = r#"{"packages": []}"#;
-        let diags = parse_geiger_output(json).unwrap();
+        let diags = parse_geiger_ascii("").unwrap();
         assert!(diags.is_empty());
     }
 
     #[test]
-    fn test_parse_package_with_unsafe() {
-        let json = r#"{
-            "packages": [{
-                "name": "some-crate",
-                "version": "1.0.0",
-                "unsafety": {
-                    "used": {
-                        "functions": {"safe": 10, "unsafe": 3},
-                        "exprs": {"safe": 100, "unsafe": 20}
-                    },
-                    "unused": {
-                        "functions": {"safe": 0, "unsafe": 0},
-                        "exprs": {"safe": 0, "unsafe": 0}
-                    }
-                }
-            }]
-        }"#;
-        let diags = parse_geiger_output(json).unwrap();
+    fn test_parse_ascii_with_unsafe_dependency() {
+        let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
+                       3/10       20/100       0/0    0/0     0/0      !  └── some-crate 1.0.0\n";
+        let diags = parse_geiger_ascii(output).unwrap();
         assert_eq!(diags.len(), 1);
-        assert!(diags[0].message.contains("some-crate@1.0.0"));
+        assert!(diags[0].message.contains("some-crate 1.0.0"));
         assert!(diags[0].message.contains("3 functions"));
         assert!(diags[0].message.contains("20 expressions"));
     }
 
     #[test]
-    fn test_safe_package_no_diagnostic() {
-        let json = r#"{
-            "packages": [{
-                "name": "safe-crate",
-                "version": "0.1.0",
-                "unsafety": {
-                    "used": {
-                        "functions": {"safe": 50, "unsafe": 0},
-                        "exprs": {"safe": 200, "unsafe": 0}
-                    },
-                    "unused": {
-                        "functions": {"safe": 0, "unsafe": 0},
-                        "exprs": {"safe": 0, "unsafe": 0}
-                    }
-                }
-            }]
-        }"#;
-        let diags = parse_geiger_output(json).unwrap();
+    fn test_parse_ascii_safe_crate_no_diagnostic() {
+        let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
+                       0/50       0/200        0/0    0/0     0/0      :) └── safe-crate 0.1.0\n";
+        let diags = parse_geiger_ascii(output).unwrap();
         assert!(diags.is_empty());
     }
 
     #[test]
     fn test_high_unsafe_count_is_warning() {
-        let json = r#"{
-            "packages": [{
-                "name": "risky-crate",
-                "version": "2.0.0",
-                "unsafety": {
-                    "used": {
-                        "functions": {"safe": 5, "unsafe": 30},
-                        "exprs": {"safe": 10, "unsafe": 25}
-                    },
-                    "unused": {
-                        "functions": {"safe": 0, "unsafe": 0},
-                        "exprs": {"safe": 0, "unsafe": 0}
-                    }
-                }
-            }]
-        }"#;
-        let diags = parse_geiger_output(json).unwrap();
+        let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
+                       30/35      25/30        0/0    0/0     0/0      !  └── risky-crate 2.0.0\n";
+        let diags = parse_geiger_ascii(output).unwrap();
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn test_parse_unsafe_count() {
+        assert_eq!(parse_unsafe_count("3/10"), 3);
+        assert_eq!(parse_unsafe_count("0/50"), 0);
+        assert_eq!(parse_unsafe_count("invalid"), 0);
     }
 }
