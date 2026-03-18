@@ -196,6 +196,13 @@ pub fn all_custom_rules() -> Vec<Box<dyn CustomRule>> {
         .collect()
 }
 
+/// Check if the tail of `actual` matches `pattern` exactly.
+/// Used by async and framework rules to match blocking-call path segments.
+#[inline]
+pub fn segments_match(actual: &[&str], pattern: &[&str]) -> bool {
+    actual.len() >= pattern.len() && actual.ends_with(pattern)
+}
+
 fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
     scanner::build_glob_set(patterns)
 }

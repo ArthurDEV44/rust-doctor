@@ -102,16 +102,3 @@ pub enum ConfigError {
     #[error("failed to parse [package.metadata.rust-doctor] in Cargo.toml: {0}")]
     MetadataParse(#[from] serde_json::Error),
 }
-
-/// Errors from the MCP server tool handlers.
-#[derive(thiserror::Error, Debug)]
-pub enum McpToolError {
-    #[error(transparent)]
-    Bootstrap(#[from] BootstrapError),
-
-    #[error(transparent)]
-    Scan(#[from] ScanError),
-
-    #[error("missing required argument: {0}")]
-    MissingArgument(&'static str),
-}

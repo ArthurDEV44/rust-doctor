@@ -321,10 +321,6 @@ const ACTIX_BLOCKING_SHORT: &[(&str, &str, &str)] = &[(
     "Use `tokio::time::sleep` or wrap in `actix_web::web::block()`",
 )];
 
-fn actix_segments_match(call: &[&str], pattern: &[&str]) -> bool {
-    call.len() >= pattern.len() && call.ends_with(pattern)
-}
-
 impl<'ast> Visit<'ast> for ActixVisitor<'_> {
     fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
         let was_in_handler = self.in_handler;
@@ -350,7 +346,7 @@ impl<'ast> Visit<'ast> for ActixVisitor<'_> {
             // Check full path patterns
             let mut matched = false;
             for (pattern, help) in ACTIX_BLOCKING_CALLS {
-                if actix_segments_match(&seg_strs, pattern) {
+                if super::segments_match(&seg_strs, pattern) {
                     let span = func_path.path.span();
                     self.diagnostics.push(Diagnostic {
                         file_path: self.path.to_path_buf(),

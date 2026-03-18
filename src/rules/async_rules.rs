@@ -171,7 +171,7 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
             // Check full path patterns
             let mut matched = false;
             for (pattern, help) in BLOCKING_CALLS {
-                if segments_match(&seg_strs, pattern) {
+                if super::segments_match(&seg_strs, pattern) {
                     let span = func_path.path.span();
                     self.diagnostics.push(Diagnostic {
                         file_path: self.path.to_path_buf(),
@@ -226,13 +226,6 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
         // (e.g., std::fs::read_to_string) without false positives.
         syn::visit::visit_expr_method_call(self, _i);
     }
-}
-
-fn segments_match(actual: &[&str], pattern: &[&str]) -> bool {
-    if actual.len() < pattern.len() {
-        return false;
-    }
-    actual.ends_with(pattern)
 }
 
 // ─── Rule 2: block-on-in-async ──────────────────────────────────────────────

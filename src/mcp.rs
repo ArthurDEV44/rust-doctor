@@ -372,11 +372,11 @@ impl rmcp::handler::server::ServerHandler for RustDoctorServer {
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        let docs = build_rule_docs();
+        let docs = rule_docs();
         let resources: Vec<Resource> = docs
             .iter()
             .map(|doc| {
-                RawResource::new(format!("rule://{}", doc.name), &doc.name)
+                RawResource::new(format!("rule://{}", doc.name), doc.name)
                     .with_description(format!("[{}] {}", doc.severity, doc.description))
                     .with_mime_type("text/markdown")
                     .no_annotation()
@@ -518,29 +518,33 @@ fn discover_and_resolve(
 // ---------------------------------------------------------------------------
 
 struct RuleDoc {
-    name: String,
+    name: &'static str,
     category: String,
     severity: String,
-    description: String,
-    fix: String,
+    description: &'static str,
+    fix: &'static str,
 }
 
-fn build_rule_docs() -> Vec<RuleDoc> {
-    rules::all_custom_rules()
-        .iter()
-        .map(|rule| RuleDoc {
-            name: rule.name().to_string(),
-            category: rule.category().to_string(),
-            severity: rule.severity().to_string(),
-            description: rule.description().to_string(),
-            fix: rule.fix_hint().to_string(),
-        })
-        .collect()
+/// Return cached rule docs. Computed once on first call since rules are static.
+fn rule_docs() -> &'static [RuleDoc] {
+    static DOCS: std::sync::OnceLock<Vec<RuleDoc>> = std::sync::OnceLock::new();
+    DOCS.get_or_init(|| {
+        rules::all_custom_rules()
+            .iter()
+            .map(|rule| RuleDoc {
+                name: rule.name(),
+                category: rule.category().to_string(),
+                severity: rule.severity().to_string(),
+                description: rule.description(),
+                fix: rule.fix_hint(),
+            })
+            .collect()
+    })
 }
 
 fn get_rule_explanation(rule: &str) -> String {
     // Look up in the data-driven registry first
-    let docs = build_rule_docs();
+    let docs = rule_docs();
     if let Some(doc) = docs.iter().find(|d| d.name == rule) {
         return format!(
             "## {}\n\n**Category:** {} | **Severity:** {}\n\n{}\n\n**Fix:** {}",
@@ -563,9 +567,9 @@ fn get_all_rules_listing() -> String {
     let mut text = String::from("# rust-doctor Rules\n\n## Custom Rules (AST-based via syn)\n\n");
 
     use std::fmt::Write;
-    let docs = build_rule_docs();
+    let docs = rule_docs();
     let mut current_category = String::new();
-    for doc in &docs {
+    for doc in docs {
         if doc.category != current_category {
             if !current_category.is_empty() {
                 text.push('\n');
@@ -581,7 +585,7 @@ fn get_all_rules_listing() -> String {
             doc.description
                 .split(". ")
                 .next()
-                .unwrap_or(&doc.description)
+                .unwrap_or(doc.description)
         );
     }
 
@@ -610,7 +614,7 @@ mod tests {
 
     #[test]
     fn test_rule_docs_covers_all_custom_rules() {
-        let docs = build_rule_docs();
+        let docs = rule_docs();
         let expected: Vec<String> = crate::scan::custom_rule_names()
             .into_iter()
             .filter(|name| name != "unused-dependency") // external tool rule, not AST
@@ -619,19 +623,19 @@ mod tests {
         for rule_name in &expected {
             assert!(
                 docs.iter().any(|doc| doc.name == *rule_name),
-                "build_rule_docs() is missing entry for custom rule '{rule_name}'"
+                "rule_docs() is missing entry for custom rule '{rule_name}'"
             );
         }
     }
 
     #[test]
     fn test_rule_docs_has_no_duplicates() {
-        let docs = build_rule_docs();
+        let docs = rule_docs();
         let mut seen = std::collections::HashSet::new();
-        for doc in &docs {
+        for doc in docs {
             assert!(
                 seen.insert(&doc.name),
-                "build_rule_docs() has duplicate entry for '{}'",
+                "rule_docs() has duplicate entry for '{}'",
                 doc.name
             );
         }
@@ -639,8 +643,8 @@ mod tests {
 
     #[test]
     fn test_rule_docs_fields_not_empty() {
-        let docs = build_rule_docs();
-        for doc in &docs {
+        let docs = rule_docs();
+        for doc in docs {
             assert!(!doc.name.is_empty(), "Rule has empty name");
             assert!(
                 !doc.category.is_empty(),
@@ -718,10 +722,10 @@ mod tests {
     #[test]
     fn test_rules_listing_contains_all_custom_rules() {
         let listing = get_all_rules_listing();
-        let docs = build_rule_docs();
-        for doc in &docs {
+        let docs = rule_docs();
+        for doc in docs {
             assert!(
-                listing.contains(doc.name.as_str()),
+                listing.contains(doc.name),
                 "Rules listing is missing '{}'",
                 doc.name
             );
