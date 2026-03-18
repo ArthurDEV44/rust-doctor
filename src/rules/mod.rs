@@ -100,16 +100,6 @@ impl RuleEngine {
         Self { rules }
     }
 
-    /// Scan all `.rs` files under `project_root/src/`, skipping files
-    /// matching the ignore patterns. Returns collected diagnostics.
-    ///
-    /// Each file is read from disk once and cached in memory for the duration
-    /// of this scan. Unchanged files reuse cached diagnostics from the
-    /// incremental scan cache (`.rust-doctor-cache.json`).
-    pub fn scan(&self, project_root: &Path, ignore_files: &[String]) -> Vec<Diagnostic> {
-        self.scan_with_config(project_root, ignore_files, &[], &[])
-    }
-
     /// Scan with full config context for cache key computation.
     ///
     /// This is the main implementation; [`scan`](Self::scan) delegates here
@@ -139,9 +129,15 @@ impl RuleEngine {
         // Build ignore glob set
         let ignore_set = build_ignore_set(ignore_files);
 
-        // Compute config hash and try loading the incremental cache
-        let config_hash =
-            cache::compute_config_hash(ignore_rules, ignore_files, enable_rules);
+        // Compute config hash including active rule names so cache
+        // invalidates when rules are added or removed.
+        let active_rule_names: Vec<&str> = self.rules.iter().map(|r| r.name()).collect();
+        let config_hash = cache::compute_config_hash(
+            ignore_rules,
+            ignore_files,
+            enable_rules,
+            &active_rule_names,
+        );
         let mut scan_cache = ScanCache::load(project_root, &config_hash)
             .unwrap_or_else(|| ScanCache::new(config_hash.clone()));
 
@@ -187,7 +183,7 @@ impl RuleEngine {
         // Process stale files in parallel with rayon
         let stale_results: Vec<(std::path::PathBuf, String, Vec<Diagnostic>)> = stale
             .par_iter()
-            .map(|(file_path, content): &(std::path::PathBuf, String)| {
+            .map(|&(file_path, content)| {
                 let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
 
                 let diagnostics = match syn::parse_file(content) {
@@ -211,9 +207,9 @@ impl RuleEngine {
             .collect();
 
         // Update the cache with newly scanned results
-        for (rel_path, content, diagnostics) in stale_results {
+        for (rel_path, content, diagnostics) in &stale_results {
             all_diagnostics.extend(diagnostics.clone());
-            scan_cache.update(&rel_path, &content, diagnostics);
+            scan_cache.update(rel_path, content, diagnostics.clone());
         }
 
         // Persist the updated cache (best-effort)
@@ -280,15 +276,6 @@ pub struct RuleEnginePass {
 }
 
 impl RuleEnginePass {
-    pub fn new(rules: Vec<Box<dyn CustomRule>>, ignore_files: Vec<String>) -> Self {
-        Self {
-            engine: RuleEngine::new(rules),
-            ignore_files,
-            ignore_rules: vec![],
-            enable_rules: vec![],
-        }
-    }
-
     /// Create a new pass with full config context for incremental caching.
     pub fn with_config(
         rules: Vec<Box<dyn CustomRule>>,
@@ -446,7 +433,7 @@ mod tests {
     fn test_rule_engine_with_no_rules() {
         let engine = RuleEngine::new(vec![]);
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         assert!(diags.is_empty());
     }
 
@@ -454,7 +441,7 @@ mod tests {
     fn test_rule_engine_no_src_dir() {
         let dir = tempfile::tempdir().unwrap();
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         assert!(diags.is_empty());
     }
 
@@ -462,7 +449,7 @@ mod tests {
     fn test_rule_engine_runs_rules_on_files() {
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
     }
@@ -475,7 +462,7 @@ mod tests {
             ("utils.rs", "pub fn util() {}"),
         ]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         assert_eq!(diags.len(), 3);
     }
 
@@ -483,7 +470,7 @@ mod tests {
     fn test_rule_engine_catches_panics() {
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let engine = RuleEngine::new(vec![Box::new(PanickingRule), Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         // PanickingRule panicked and was caught; AlwaysWarnsRule still ran
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].rule, "always-warns");
@@ -493,7 +480,7 @@ mod tests {
     fn test_rule_engine_handles_parse_errors() {
         let dir = make_temp_project(&[("main.rs", "this is not valid rust {{{{")]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
-        let diags = engine.scan(dir.path(), &[]);
+        let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         // File couldn't be parsed, so no diagnostics
         assert!(diags.is_empty());
     }
@@ -506,7 +493,7 @@ mod tests {
         ]);
         let engine = RuleEngine::new(vec![Box::new(AlwaysWarnsRule)]);
         let ignore = vec!["src/generated/**".to_string()];
-        let diags = engine.scan(dir.path(), &ignore);
+        let diags = engine.scan_with_config(dir.path(), &ignore, &[], &[]);
         assert_eq!(diags.len(), 1);
         assert!(diags[0].file_path.to_string_lossy().contains("main.rs"));
     }
@@ -515,7 +502,7 @@ mod tests {
     fn test_rule_engine_on_self() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let engine = RuleEngine::new(vec![Box::new(CountFnRule)]);
-        let _diags = engine.scan(manifest_dir, &[]);
+        let _diags = engine.scan_with_config(manifest_dir, &[], &[], &[]);
         // CountFnRule only fires if a file has >10 functions, so may or may not find issues
     }
 
@@ -529,7 +516,7 @@ mod tests {
     #[test]
     fn test_rule_engine_pass() {
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
-        let pass = RuleEnginePass::new(vec![Box::new(AlwaysWarnsRule)], vec![]);
+        let pass = RuleEnginePass::with_config(vec![Box::new(AlwaysWarnsRule)], vec![], vec![], vec![]);
         let result = pass.run(dir.path());
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);

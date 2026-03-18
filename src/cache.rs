@@ -120,16 +120,24 @@ pub fn hash_content(content: &str) -> String {
 
 /// Compute a config hash from the resolved config fields that affect custom
 /// rule results. When any of these change, the entire cache is invalidated.
+/// Compute a hash of the scan configuration and active rule set.
+///
+/// The hash includes ignore/enable lists AND the names of all active rules,
+/// so adding or removing a rule invalidates the cache automatically.
 pub fn compute_config_hash(
     ignore_rules: &[String],
     ignore_files: &[String],
     enable_rules: &[String],
+    active_rule_names: &[&str],
 ) -> String {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     ignore_rules.hash(&mut hasher);
     ignore_files.hash(&mut hasher);
     enable_rules.hash(&mut hasher);
+    active_rule_names.hash(&mut hasher);
+    // Include the rust-doctor version so binary upgrades invalidate the cache
+    env!("CARGO_PKG_VERSION").hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
@@ -158,7 +166,7 @@ mod tests {
     #[test]
     fn test_load_save_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
 
         let mut cache = ScanCache::new(config_hash.clone());
         let diag = sample_diagnostic("src/main.rs", "unwrap-in-production");
@@ -184,7 +192,7 @@ mod tests {
     #[test]
     fn test_fresh_file_returns_cached_diagnostics() {
         let content = "fn main() { println!(\"hello\"); }";
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let mut cache = ScanCache::new(config_hash);
 
         let diag = sample_diagnostic("src/main.rs", "test-rule");
@@ -204,7 +212,7 @@ mod tests {
     fn test_modified_file_is_stale() {
         let original = "fn main() {}";
         let modified = "fn main() { todo!() }";
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let mut cache = ScanCache::new(config_hash);
 
         cache.update(
@@ -222,8 +230,8 @@ mod tests {
     #[test]
     fn test_config_change_invalidates_cache() {
         let dir = tempfile::tempdir().unwrap();
-        let hash_v1 = compute_config_hash(&["rule-a".to_string()], &[], &[]);
-        let hash_v2 = compute_config_hash(&["rule-b".to_string()], &[], &[]);
+        let hash_v1 = compute_config_hash(&["rule-a".to_string()], &[], &[], &[]);
+        let hash_v2 = compute_config_hash(&["rule-b".to_string()], &[], &[], &[]);
 
         let mut cache = ScanCache::new(hash_v1.clone());
         cache.update(
@@ -245,7 +253,7 @@ mod tests {
     #[test]
     fn test_missing_cache_file_returns_none() {
         let dir = tempfile::tempdir().unwrap();
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let loaded = ScanCache::load(dir.path(), &config_hash);
         assert!(loaded.is_none());
     }
@@ -258,7 +266,7 @@ mod tests {
         let cache_path = dir.path().join(CACHE_FILENAME);
         std::fs::write(&cache_path, "not valid json {{").unwrap();
 
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let loaded = ScanCache::load(dir.path(), &config_hash);
         assert!(loaded.is_none());
     }
@@ -268,7 +276,7 @@ mod tests {
     #[test]
     fn test_wrong_version_returns_none() {
         let dir = tempfile::tempdir().unwrap();
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
 
         // Manually write a cache with wrong version
         let bad = serde_json::json!({
@@ -307,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_get_cached_diagnostics_unknown_path() {
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let cache = ScanCache::new(config_hash);
         assert!(cache
             .get_cached_diagnostics(Path::new("nonexistent.rs"))
@@ -318,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_update_overwrites_previous_entry() {
-        let config_hash = compute_config_hash(&[], &[], &[]);
+        let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let mut cache = ScanCache::new(config_hash);
 
         cache.update(
