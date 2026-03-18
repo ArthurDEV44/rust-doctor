@@ -72,6 +72,7 @@ fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct GeigerOutput {
     #[serde(default)]
     packages: Vec<GeigerPackage>,
@@ -88,6 +89,7 @@ struct GeigerPackage {
 }
 
 #[derive(Deserialize, Default)]
+#[allow(dead_code)]
 struct GeigerUnsafety {
     #[serde(default)]
     used: GeigerCounts,
@@ -96,6 +98,7 @@ struct GeigerUnsafety {
 }
 
 #[derive(Deserialize, Default)]
+#[allow(dead_code)]
 struct GeigerCounts {
     #[serde(default)]
     functions: CountPair,
@@ -104,6 +107,7 @@ struct GeigerCounts {
 }
 
 #[derive(Deserialize, Default)]
+#[allow(dead_code)]
 struct CountPair {
     #[serde(default)]
     safe: u64,

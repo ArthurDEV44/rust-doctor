@@ -2,7 +2,7 @@ use crate::config::ResolvedConfig;
 use crate::diagnostics::{Diagnostic, ScanResult, Severity};
 use crate::discovery::ProjectInfo;
 use crate::{
-    audit, clippy, config, coverage, deny, diff, machete, msrv, output, rules, scanner,
+    audit, clippy, config, coverage, deny, diff, geiger, machete, msrv, output, rules, scanner,
     semver_checks, suppression, workspace,
 };
 use rayon::prelude::*;
@@ -168,7 +168,7 @@ fn build_passes(
 
     if resolved.lint {
         passes.push(Box::new(clippy::ClippyPass));
-        passes.push(Box::new(rules::RuleEnginePass::new(
+        passes.push(Box::new(rules::RuleEnginePass::with_config(
             rules::error_handling::all_rules()
                 .into_iter()
                 .chain(rules::performance::all_rules())
@@ -187,6 +187,8 @@ fn build_passes(
                 })
                 .collect(),
             resolved.ignore_files.clone(),
+            resolved.ignore_rules.clone(),
+            resolved.enable_rules.clone(),
         )));
     }
 
@@ -202,6 +204,7 @@ fn build_passes(
             passes.push(Box::new(audit::AuditPass { offline }));
         }
         passes.push(Box::new(machete::MachetePass));
+        passes.push(Box::new(geiger::GeigerPass));
         passes.push(Box::new(semver_checks::SemVerPass));
         passes.push(Box::new(coverage::CoveragePass));
     }

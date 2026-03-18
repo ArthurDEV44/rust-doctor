@@ -552,6 +552,20 @@ fn is_test_file(path: &Path) -> bool {
     s.contains("/tests/") || s.starts_with("tests/")
 }
 
+/// Returns `true` if `line` (1-based) falls within a `#[cfg(test)]` module.
+/// Uses a simple heuristic: finds the first `#[cfg(test)]` line in the file
+/// and considers everything at or below it as test code.
+fn is_line_in_test_module(content: &str, line: u32) -> bool {
+    for (i, text) in content.lines().enumerate() {
+        let trimmed = text.trim();
+        if trimmed == "#[cfg(test)]" || trimmed.starts_with("#[cfg(test)]") {
+            // Everything from this line onward is test code
+            return line >= (i + 1) as u32;
+        }
+    }
+    false
+}
+
 /// Return the list of all known lint names (for config validation).
 pub fn known_lint_names() -> Vec<&'static str> {
     LINT_REGISTRY.iter().map(|e| e.name).collect()
@@ -862,10 +876,32 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         }
     }
 
-    // Post-filter: drop restriction-group lints from integration test files.
-    // Unit tests (#[cfg(test)] inside src/) are handled by clippy.toml config above,
-    // but integration test files (tests/*.rs) may still fire restriction lints.
-    diagnostics.retain(|d| !(is_restriction_lint(&d.rule) && is_test_file(&d.file_path)));
+    // Post-filter: drop restriction-group lints from test code.
+    // This covers both integration test files (tests/*.rs) and #[cfg(test)] modules
+    // in source files. For source files, we check if the diagnostic line is below the
+    // first `#[cfg(test)]` marker in the file.
+    diagnostics.retain(|d| {
+        if !is_restriction_lint(&d.rule) {
+            return true;
+        }
+        if is_test_file(&d.file_path) {
+            return false;
+        }
+        // For source files, check if line is in a #[cfg(test)] region
+        if let Some(line) = d.line {
+            let abs_path = if d.file_path.is_absolute() {
+                d.file_path.clone()
+            } else {
+                project_root.join(&d.file_path)
+            };
+            if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                if is_line_in_test_module(&content, line) {
+                    return false;
+                }
+            }
+        }
+        true
+    });
 
     // Post-filter: drop print_stdout/print_stderr for binary crates.
     // These lints target library code; CLI binaries legitimately use println!/eprintln!.
