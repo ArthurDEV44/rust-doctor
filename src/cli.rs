@@ -41,6 +41,10 @@ pub struct Cli {
     #[arg(long)]
     pub fix: bool,
 
+    /// Show a prioritized remediation plan after scanning
+    #[arg(long)]
+    pub plan: bool,
+
     /// Skip network-dependent checks (cargo-audit advisory DB fetch, etc.)
     #[arg(long)]
     pub offline: bool,

@@ -309,22 +309,51 @@ Each entry shows rule ID, severity, and one-line summary.",
 
     #[prompt(
         name = "health-check",
-        description = "Run a full health check on a Rust project and explain the top issues. \
-Combines scan + explain_rule into one workflow."
+        description = "Run a full health check on a Rust project: scan, generate a prioritized \
+remediation plan, and optionally apply fixes. Combines scan + plan + fix into one structured workflow."
     )]
     async fn health_check(&self, params: Parameters<HealthCheckArgs>) -> GetPromptResult {
         GetPromptResult::new(vec![PromptMessage::new_text(
             PromptMessageRole::User,
             format!(
-                "Run a full health analysis on the Rust project at '{}'. \
-                 First use the `scan` tool to get all diagnostics and the health score. \
-                 Then for each error-severity finding, use `explain_rule` to get fix guidance. \
-                 Summarize: (1) overall score and label, (2) top issues grouped by category, \
-                 (3) actionable fix steps for each error, (4) quick wins for warnings.",
-                params.0.directory
+                r#"Run a comprehensive health audit on the Rust project at '{directory}'.
+
+## Phase 1: Scan
+Use the `scan` tool to get all diagnostics and the health score.
+
+## Phase 2: Remediation Plan
+From the scan results, generate a prioritized remediation plan:
+- **P0 Critical**: Security vulnerabilities, correctness bugs → fix immediately
+- **P1 High**: Error handling issues, dependency problems → fix before release
+- **P2 Medium**: Performance issues, architecture smells → plan for next sprint
+- **P3 Low**: Style, info-level suggestions → nice-to-have
+
+For each item, show:
+1. Rule name and occurrence count
+2. Affected files
+3. Concrete fix action (use `explain_rule` for detailed guidance)
+4. Estimated effort (trivial / small / medium / large)
+
+## Phase 3: Confirmation
+Present the full plan as a structured task list and ask:
+"Do you want me to proceed with fixing these issues? I'll work through them by priority, starting with P0."
+
+## Phase 4: Execution (if confirmed)
+If the user confirms:
+1. Use task tracking (plan mode) to organize the work
+2. Start with P0 items, then P1, P2, P3
+3. For each item:
+   - Read the affected files
+   - Apply the fix following the `explain_rule` guidance
+   - Verify the fix compiles (`cargo check`)
+4. After all fixes, re-run `scan` to verify the score improved
+5. Commit the changes with a conventional commit message
+
+If the user declines or wants partial fixes, respect their choice and only fix the items they approve."#,
+                directory = params.0.directory
             ),
         )])
-        .with_description("Comprehensive Rust project health check with fix guidance")
+        .with_description("Full health audit with prioritized remediation plan and structured fix workflow")
     }
 }
 

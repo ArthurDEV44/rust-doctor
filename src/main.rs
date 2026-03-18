@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use rust_doctor::cli::{Cli, FailOn};
-use rust_doctor::{config, discovery, fixer, output, sarif, scan};
+use rust_doctor::{config, discovery, fixer, output, plan, sarif, scan};
 use std::process;
 
 fn main() {
@@ -86,6 +86,13 @@ fn main() {
         }
     } else {
         output::render_terminal(&scan_result, resolved.verbose);
+    }
+
+    // Show remediation plan if requested
+    if cli.plan {
+        let items = plan::generate_plan(&scan_result);
+        let plan_text = plan::format_plan_markdown(&items, &scan_result);
+        eprintln!("\n{plan_text}");
     }
 
     // Score quality gate

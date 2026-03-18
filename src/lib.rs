@@ -87,6 +87,8 @@ pub mod fixer;
 pub mod mcp;
 /// Terminal, JSON, and score output rendering.
 pub mod output;
+/// Remediation plan generator from scan diagnostics.
+pub mod plan;
 /// SARIF 2.1.0 output for CI/CD integration.
 pub mod sarif;
 /// Top-level scan pipeline that orchestrates all analysis passes.
