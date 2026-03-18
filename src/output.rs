@@ -1,6 +1,7 @@
 use crate::diagnostics::{Category, Diagnostic, DimensionScores, ScanResult, ScoreLabel, Severity};
 use owo_colors::{OwoColorize, Stream};
 use std::collections::{HashMap, HashSet};
+use unicode_width::UnicodeWidthStr;
 
 // --- Score constants ---
 
@@ -205,13 +206,13 @@ fn print_score_box(result: &ScanResult) {
         result.elapsed.as_secs_f64(),
     );
 
-    // Calculate box width from content widths (avoid cloning strings)
+    // Calculate box width from content display widths
     let max_width = [
         7, // face lines "│ X X │"
-        score_text.chars().count(),
-        bar.plain.chars().count(),
-        dim_text.chars().count(),
-        stats.chars().count(),
+        score_text.width(),
+        bar.plain.width(),
+        dim_text.width(),
+        stats.width(),
     ]
     .into_iter()
     .max()
@@ -278,11 +279,11 @@ fn print_score_box(result: &ScanResult) {
 
     // Score
     let colored_score = colorize_by_score(&score_text, score);
-    println!("{}", pad_line(&colored_score, score_text.len()));
+    println!("{}", pad_line(&colored_score, score_text.width()));
     println!("{}", empty_line());
 
     // Bar
-    println!("{}", pad_line(&bar.colored, bar.plain.chars().count()));
+    println!("{}", pad_line(&bar.colored, bar.plain.width()));
     println!("{}", empty_line());
 
     // Dimension scores
@@ -299,7 +300,7 @@ fn print_score_box(result: &ScanResult) {
         "Dependencies".if_supports_color(Stream::Stdout, |t| t.dimmed()),
         colorize_by_score(&ds.dependencies.to_string(), ds.dependencies),
     );
-    println!("{}", pad_line(&colored_dim, dim_text.len()));
+    println!("{}", pad_line(&colored_dim, dim_text.width()));
     println!("{}", empty_line());
 
     // Stats
@@ -331,7 +332,7 @@ fn print_score_box(result: &ScanResult) {
         result.source_file_count,
         result.elapsed.as_secs_f64(),
     );
-    println!("{}", pad_line(&colored_stats, stats.len()));
+    println!("{}", pad_line(&colored_stats, stats.width()));
 
     println!("{bottom}");
 }

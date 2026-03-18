@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "rust-doctor"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "cargo_metadata",
  "clap",
@@ -856,6 +856,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "unicode-width",
 ]
 
 [[package]]
