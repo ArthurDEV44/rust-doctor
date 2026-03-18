@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "rust-doctor": {
+      "command": "cargo",
+      "args": ["run", "--features", "mcp", "--", "--mcp"],
+      "cwd": "/home/arthur/dev/rust-doctor"
+    }
+  }
+}

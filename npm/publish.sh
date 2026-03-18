@@ -38,6 +38,9 @@ for target in "${!TARGET_MAP[@]}"; do
   # Update version in package.json
   sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" "${pkg_dir}/package.json"
 
+  # Ensure bin/ directory exists (git doesn't track empty dirs)
+  mkdir -p "${pkg_dir}/bin"
+
   # Extract binary
   archive_base="rust-doctor-${target}"
   if [[ "$target" == *"windows"* ]]; then
