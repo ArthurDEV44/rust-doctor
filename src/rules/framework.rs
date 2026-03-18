@@ -66,6 +66,7 @@ impl CustomRule for TokioMainMissing {
                         ),
                         line: Some(span.start().line as u32),
                         column: Some(span.start().column as u32 + 1),
+                        fix: None,
                     });
                 }
             }
@@ -139,6 +140,7 @@ impl<'ast> Visit<'ast> for SpawnVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -203,6 +205,7 @@ impl CustomRule for AxumHandlerNotAsync {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -360,6 +363,7 @@ impl<'ast> Visit<'ast> for ActixVisitor<'_> {
                         help: Some(help.to_string()),
                         line: Some(span.start().line as u32),
                         column: Some(span.start().column as u32 + 1),
+                        fix: None,
                     });
                     matched = true;
                     break;
@@ -384,6 +388,7 @@ impl<'ast> Visit<'ast> for ActixVisitor<'_> {
                             help: Some(help.to_string()),
                             line: Some(span.start().line as u32),
                             column: Some(span.start().column as u32 + 1),
+                            fix: None,
                         });
                     }
                 }

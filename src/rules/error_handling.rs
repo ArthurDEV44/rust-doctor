@@ -77,6 +77,7 @@ impl<'ast> Visit<'ast> for UnwrapVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -162,6 +163,7 @@ impl<'ast> Visit<'ast> for PanicVisitor<'_> {
                     help: Some("Return a Result or Option instead of panicking".to_string()),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -258,6 +260,7 @@ fn check_return_type_box_dyn_error(
             ),
             line: Some(span.start().line as u32),
             column: Some(span.start().column as u32 + 1),
+            fix: None,
         });
     }
 }
@@ -422,6 +425,7 @@ fn check_result_unit_error(
             ),
             line: Some(span.start().line as u32),
             column: Some(span.start().column as u32 + 1),
+            fix: None,
         });
     }
 }

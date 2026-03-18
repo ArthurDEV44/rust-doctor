@@ -1,5 +1,6 @@
 use crate::cli::{Cli, FailOn};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Configuration as read from a file (all fields optional).
@@ -18,6 +19,31 @@ pub struct FileConfig {
     pub diff: Option<String>,
     /// Fail-on level ("error", "warning", "none").
     pub fail_on: Option<String>,
+    /// Per-rule configuration overrides.
+    #[serde(default)]
+    pub rules_config: HashMap<String, RuleConfig>,
+    /// Score configuration.
+    #[serde(default)]
+    pub score: ScoreConfig,
+}
+
+/// Per-rule configuration overrides.
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct RuleConfig {
+    /// Override severity for this rule.
+    pub severity: Option<String>,
+    /// Enable or disable this specific rule.
+    pub enabled: Option<bool>,
+    /// Custom threshold (rule-specific).
+    pub threshold: Option<u32>,
+}
+
+/// Score configuration.
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct ScoreConfig {
+    /// Fail the scan if the score falls below this threshold.
+    pub fail_below: Option<u32>,
 }
 
 /// Ignore configuration for rules and file patterns.
@@ -28,6 +54,8 @@ pub struct IgnoreConfig {
     pub rules: Vec<String>,
     /// File glob patterns to ignore.
     pub files: Vec<String>,
+    /// Rule names to explicitly enable (for opt-in rules like string-from-literal).
+    pub enable: Vec<String>,
 }
 
 /// Fully resolved configuration with concrete defaults.
@@ -41,6 +69,9 @@ pub struct ResolvedConfig {
     pub verbose: bool,
     pub diff: Option<String>,
     pub fail_on: FailOn,
+    pub rules_config: HashMap<String, RuleConfig>,
+    pub enable_rules: Vec<String>,
+    pub score_fail_below: Option<u32>,
 }
 
 /// Load configuration from `rust-doctor.toml` (first priority) or
@@ -131,6 +162,9 @@ pub fn resolve_config(cli: &Cli, file_config: Option<&FileConfig>) -> ResolvedCo
         verbose,
         diff,
         fail_on,
+        rules_config: fc.rules_config,
+        enable_rules: fc.ignore.enable,
+        score_fail_below: fc.score.fail_below,
     }
 }
 
@@ -150,6 +184,9 @@ pub fn resolve_config_defaults(file_config: Option<&FileConfig>) -> ResolvedConf
             .unwrap_or(FailOn::None),
         ignore_rules: fc.ignore.rules,
         ignore_files: fc.ignore.files,
+        rules_config: fc.rules_config,
+        enable_rules: fc.ignore.enable,
+        score_fail_below: fc.score.fail_below,
     }
 }
 
@@ -311,7 +348,9 @@ mod tests {
             ignore: IgnoreConfig {
                 rules: vec!["rule1".to_string()],
                 files: vec!["test/**".to_string()],
+                ..Default::default()
             },
+            ..Default::default()
         };
         let resolved = resolve_config(&cli, Some(&fc));
         assert!(resolved.verbose);
@@ -452,5 +491,175 @@ mod tests {
 
         let result = load_file_config(dir.path(), None);
         assert!(result.is_err());
+    }
+
+    // --- Per-rule config and score config ---
+
+    #[test]
+    fn test_parse_config_with_rules_config() {
+        let toml_str = r#"
+            [rules_config.excessive-clone]
+            threshold = 5
+
+            [rules_config.unwrap-in-production]
+            severity = "error"
+            enabled = false
+        "#;
+        let config: FileConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.rules_config.len(), 2);
+
+        let clone_cfg = config.rules_config.get("excessive-clone").unwrap();
+        assert_eq!(clone_cfg.threshold, Some(5));
+        assert_eq!(clone_cfg.severity, None);
+        assert_eq!(clone_cfg.enabled, None);
+
+        let unwrap_cfg = config.rules_config.get("unwrap-in-production").unwrap();
+        assert_eq!(unwrap_cfg.severity, Some("error".to_string()));
+        assert_eq!(unwrap_cfg.enabled, Some(false));
+        assert_eq!(unwrap_cfg.threshold, None);
+    }
+
+    #[test]
+    fn test_parse_config_with_score_fail_below() {
+        let toml_str = r#"
+            [score]
+            fail_below = 80
+        "#;
+        let config: FileConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.score.fail_below, Some(80));
+    }
+
+    #[test]
+    fn test_parse_config_with_enable_rules() {
+        let toml_str = r#"
+            [ignore]
+            rules = ["clippy::too_many_lines"]
+            enable = ["string-from-literal"]
+            files = ["generated/**"]
+        "#;
+        let config: FileConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.ignore.enable, vec!["string-from-literal"]);
+        assert_eq!(config.ignore.rules, vec!["clippy::too_many_lines"]);
+        assert_eq!(config.ignore.files, vec!["generated/**"]);
+    }
+
+    #[test]
+    fn test_resolve_config_merges_new_fields() {
+        let cli = cli_from(&["rust-doctor"]);
+        let mut rules_config = HashMap::new();
+        rules_config.insert(
+            "excessive-clone".to_string(),
+            RuleConfig {
+                threshold: Some(10),
+                ..Default::default()
+            },
+        );
+        let fc = FileConfig {
+            ignore: IgnoreConfig {
+                rules: vec!["some-rule".to_string()],
+                files: vec![],
+                enable: vec!["string-from-literal".to_string()],
+            },
+            rules_config,
+            score: ScoreConfig {
+                fail_below: Some(75),
+            },
+            ..Default::default()
+        };
+        let resolved = resolve_config(&cli, Some(&fc));
+        assert_eq!(resolved.enable_rules, vec!["string-from-literal"]);
+        assert_eq!(resolved.score_fail_below, Some(75));
+        assert_eq!(resolved.rules_config.len(), 1);
+        assert_eq!(
+            resolved
+                .rules_config
+                .get("excessive-clone")
+                .unwrap()
+                .threshold,
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn test_resolve_config_defaults_merges_new_fields() {
+        let mut rules_config = HashMap::new();
+        rules_config.insert(
+            "unwrap-in-production".to_string(),
+            RuleConfig {
+                severity: Some("warning".to_string()),
+                ..Default::default()
+            },
+        );
+        let fc = FileConfig {
+            ignore: IgnoreConfig {
+                enable: vec!["string-from-literal".to_string()],
+                ..Default::default()
+            },
+            rules_config,
+            score: ScoreConfig {
+                fail_below: Some(90),
+            },
+            ..Default::default()
+        };
+        let resolved = resolve_config_defaults(Some(&fc));
+        assert_eq!(resolved.enable_rules, vec!["string-from-literal"]);
+        assert_eq!(resolved.score_fail_below, Some(90));
+        assert_eq!(resolved.rules_config.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_full_example_config() {
+        let toml_str = r#"
+            [ignore]
+            rules = ["clippy::too_many_lines"]
+            enable = ["string-from-literal"]
+            files = ["generated/**"]
+
+            [rules_config.excessive-clone]
+            threshold = 5
+
+            [rules_config.unwrap-in-production]
+            severity = "error"
+
+            [score]
+            fail_below = 80
+        "#;
+        let config: FileConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.ignore.rules, vec!["clippy::too_many_lines"]);
+        assert_eq!(config.ignore.enable, vec!["string-from-literal"]);
+        assert_eq!(config.ignore.files, vec!["generated/**"]);
+        assert_eq!(config.rules_config.len(), 2);
+        assert_eq!(
+            config
+                .rules_config
+                .get("excessive-clone")
+                .unwrap()
+                .threshold,
+            Some(5)
+        );
+        assert_eq!(
+            config
+                .rules_config
+                .get("unwrap-in-production")
+                .unwrap()
+                .severity,
+            Some("error".to_string())
+        );
+        assert_eq!(config.score.fail_below, Some(80));
+    }
+
+    #[test]
+    fn test_missing_new_sections_backward_compatible() {
+        // Ensure old config format without new fields still parses correctly
+        let toml_str = r#"
+            lint = true
+            verbose = false
+            [ignore]
+            rules = ["unwrap-in-production"]
+        "#;
+        let config: FileConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.rules_config.is_empty());
+        assert_eq!(config.score.fail_below, None);
+        assert!(config.ignore.enable.is_empty());
     }
 }

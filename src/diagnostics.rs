@@ -58,6 +58,18 @@ impl std::fmt::Display for Category {
     }
 }
 
+/// A machine-applicable code fix suggestion.
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "mcp", derive(JsonSchema))]
+pub struct CodeFix {
+    /// The text to find (exact match in the source line).
+    pub old_text: String,
+    /// The replacement text.
+    pub new_text: String,
+    /// Line number (1-based) where the fix applies.
+    pub line: u32,
+}
+
 /// A single diagnostic finding from an analysis pass.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "mcp", derive(JsonSchema))]
@@ -81,6 +93,9 @@ pub struct Diagnostic {
     /// Column number (1-based) where the issue was found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column: Option<u32>,
+    /// Machine-applicable fix, if available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<CodeFix>,
 }
 
 /// Human-readable health assessment label.
@@ -183,6 +198,7 @@ mod tests {
             help: Some("Use ? operator or handle the error explicitly".to_string()),
             line: Some(42),
             column: Some(10),
+            fix: None,
         };
         let json = serde_json::to_value(&diag).unwrap();
         assert_eq!(json["rule"], "unwrap-in-production");
@@ -202,6 +218,7 @@ mod tests {
             help: None,
             line: None,
             column: None,
+            fix: None,
         };
         let json = serde_json::to_value(&diag).unwrap();
         assert!(json.get("help").is_none());

@@ -97,6 +97,7 @@ impl ScanOrchestrator {
                         help: None,
                         line: None,
                         column: None,
+                        fix: None,
                     });
                 }
                 Err(e) => {
@@ -335,6 +336,9 @@ mod tests {
             verbose: false,
             diff: None,
             fail_on: FailOn::None,
+            rules_config: std::collections::HashMap::new(),
+            enable_rules: vec![],
+            score_fail_below: None,
         }
     }
 
@@ -348,6 +352,7 @@ mod tests {
             help: None,
             line: Some(1),
             column: None,
+            fix: None,
         }
     }
 

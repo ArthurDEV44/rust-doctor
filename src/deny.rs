@@ -129,6 +129,7 @@ fn parse_deny_output(output: &str) -> Vec<Diagnostic> {
             help,
             line: None,
             column: None,
+            fix: None,
         });
     }
 

@@ -267,6 +267,7 @@ mod tests {
                 help: Some("Use ? operator instead".to_string()),
                 line: Some(42),
                 column: Some(10),
+                fix: None,
             },
             Diagnostic {
                 file_path: PathBuf::from("src/lib.rs"),
@@ -277,6 +278,7 @@ mod tests {
                 help: None,
                 line: Some(7),
                 column: None,
+                fix: None,
             },
         ];
         let result = make_scan_result(diags);
@@ -314,6 +316,7 @@ mod tests {
                 help: None,
                 line: Some(1),
                 column: None,
+                fix: None,
             },
             Diagnostic {
                 file_path: PathBuf::from("b.rs"),
@@ -324,6 +327,7 @@ mod tests {
                 help: None,
                 line: Some(5),
                 column: None,
+                fix: None,
             },
         ];
         let result = make_scan_result(diags);

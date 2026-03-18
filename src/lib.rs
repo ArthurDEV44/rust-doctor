@@ -80,6 +80,8 @@ pub mod diagnostics;
 pub mod discovery;
 /// Error types for the scan pipeline, bootstrapping, and MCP.
 pub mod error;
+/// Auto-fix application for machine-applicable diagnostic fixes.
+pub mod fixer;
 /// MCP (Model Context Protocol) server for AI tool integration.
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -93,6 +95,7 @@ pub mod scan;
 // Internal implementation modules
 pub(crate) mod audit;
 pub(crate) mod clippy;
+pub(crate) mod coverage;
 pub(crate) mod deny;
 pub(crate) mod diff;
 pub(crate) mod geiger;
@@ -101,5 +104,6 @@ pub(crate) mod msrv;
 pub(crate) mod process;
 pub(crate) mod rules;
 pub(crate) mod scanner;
+pub(crate) mod semver_checks;
 pub(crate) mod suppression;
 pub(crate) mod workspace;

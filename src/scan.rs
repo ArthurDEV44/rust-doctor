@@ -2,9 +2,10 @@ use crate::config::ResolvedConfig;
 use crate::diagnostics::{Diagnostic, ScanResult, Severity};
 use crate::discovery::ProjectInfo;
 use crate::{
-    audit, clippy, config, deny, diff, machete, msrv, output, rules, scanner, suppression,
-    workspace,
+    audit, clippy, config, coverage, deny, diff, machete, msrv, output, rules, scanner,
+    semver_checks, suppression, workspace,
 };
+use rayon::prelude::*;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -180,7 +181,10 @@ fn build_passes(
                 .chain(rules::framework::rules_for_frameworks(
                     &project_info.frameworks,
                 ))
-                .filter(|rule| rule.default_enabled())
+                .filter(|rule| {
+                    rule.default_enabled()
+                        || resolved.enable_rules.contains(&rule.name().to_string())
+                })
                 .collect(),
             resolved.ignore_files.clone(),
         )));
@@ -198,6 +202,8 @@ fn build_passes(
             passes.push(Box::new(audit::AuditPass { offline }));
         }
         passes.push(Box::new(machete::MachetePass));
+        passes.push(Box::new(semver_checks::SemVerPass));
+        passes.push(Box::new(coverage::CoveragePass));
     }
 
     // MSRV validation always runs (not gated by config flags).
@@ -227,18 +233,26 @@ fn run_passes(
         total_source_files = ctx.changed_files.len();
     }
 
-    for scan_root in scan_roots {
-        if diff_context.is_none() {
-            total_source_files += scanner::count_source_files(scan_root);
-        }
+    let results: Vec<_> = scan_roots
+        .par_iter()
+        .map(|scan_root| {
+            let source_files = if diff_context.is_none() {
+                scanner::count_source_files(scan_root)
+            } else {
+                0
+            };
+            let passes = build_passes(project_info, resolved, is_diff_mode, offline);
+            let orchestrator = scanner::ScanOrchestrator::new(passes);
+            let pass_result = orchestrator.run(scan_root, resolved, suppress_spinner);
+            (source_files, pass_result)
+        })
+        .collect();
 
-        let passes = build_passes(project_info, resolved, is_diff_mode, offline);
-        let orchestrator = scanner::ScanOrchestrator::new(passes);
-        let pass_result = orchestrator.run(scan_root, resolved, suppress_spinner);
-
+    for (source_files, pass_result) in results {
+        total_source_files += source_files;
         all_diagnostics.extend(pass_result.diagnostics);
         all_skipped_passes.extend(pass_result.skipped_passes);
-        total_elapsed += pass_result.elapsed;
+        total_elapsed = total_elapsed.max(pass_result.elapsed); // max, not sum, since parallel
     }
 
     (

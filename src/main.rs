@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use rust_doctor::cli::{Cli, FailOn};
-use rust_doctor::{config, discovery, output, sarif, scan};
+use rust_doctor::{config, discovery, fixer, output, sarif, scan};
 use std::process;
 
 fn main() {
@@ -58,6 +58,16 @@ fn main() {
         }
     };
 
+    // Apply fixes if requested
+    if cli.fix {
+        let applied = fixer::apply_fixes(&scan_result.diagnostics, &cli.directory);
+        if applied > 0 {
+            eprintln!("Applied {applied} fix(es).");
+        } else {
+            eprintln!("No machine-applicable fixes available.");
+        }
+    }
+
     // Output
     if cli.score {
         output::render_score(&scan_result);
@@ -76,6 +86,17 @@ fn main() {
         }
     } else {
         output::render_terminal(&scan_result, resolved.verbose);
+    }
+
+    // Score quality gate
+    if let Some(threshold) = resolved.score_fail_below {
+        if scan_result.score < threshold {
+            eprintln!(
+                "Score {} is below the configured threshold of {}",
+                scan_result.score, threshold
+            );
+            process::exit(1);
+        }
     }
 
     // Exit code

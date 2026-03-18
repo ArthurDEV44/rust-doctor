@@ -214,6 +214,7 @@ mod tests {
             help: None,
             line: Some(line),
             column: None,
+            fix: None,
         }
     }
 
@@ -373,6 +374,7 @@ mod tests {
                 help: None,
                 line: Some(2),
                 column: None,
+                fix: None,
             },
             Diagnostic {
                 file_path,
@@ -383,6 +385,7 @@ mod tests {
                 help: None,
                 line: Some(3),
                 column: None,
+                fix: None,
             },
         ];
 

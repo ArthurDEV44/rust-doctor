@@ -122,6 +122,7 @@ impl<'ast> Visit<'ast> for CloneVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_expr_method_call(self, i);
@@ -209,6 +210,7 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_expr_method_call(self, i);
@@ -243,6 +245,7 @@ impl<'ast> Visit<'ast> for StringLiteralVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -308,6 +311,7 @@ impl<'ast> Visit<'ast> for CollectIterVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_expr_method_call(self, i);
@@ -386,6 +390,7 @@ impl CustomRule for LargeEnumVariant {
                         ),
                         line: Some(span.start().line as u32),
                         column: Some(span.start().column as u32 + 1),
+                        fix: None,
                     });
                 }
             }
@@ -482,6 +487,7 @@ impl<'ast> Visit<'ast> for AllocVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -560,6 +566,7 @@ impl ComplexityVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
     }

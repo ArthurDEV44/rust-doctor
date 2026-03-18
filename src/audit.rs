@@ -122,6 +122,7 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
                 help: Some(format!("{fix_hint}{url_hint}")),
                 line: None,
                 column: None,
+                fix: None,
             });
         }
     }
@@ -145,6 +146,7 @@ fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Stri
                         .map(std::string::ToString::to_string),
                     line: None,
                     column: None,
+                    fix: None,
                 });
             }
         }

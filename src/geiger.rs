@@ -147,6 +147,7 @@ fn parse_geiger_output(json_str: &str) -> Result<Vec<Diagnostic>, String> {
             )),
             line: None,
             column: None,
+            fix: None,
         });
     }
 

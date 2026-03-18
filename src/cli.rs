@@ -37,6 +37,10 @@ pub struct Cli {
     #[arg(long, value_enum)]
     pub fail_on: Option<FailOn>,
 
+    /// Apply machine-applicable fixes from custom rules (modifies source files)
+    #[arg(long)]
+    pub fix: bool,
+
     /// Skip network-dependent checks (cargo-audit advisory DB fetch, etc.)
     #[arg(long)]
     pub offline: bool,

@@ -83,6 +83,7 @@ pub trait CustomRule: Send + Sync {
             help,
             line,
             column,
+            fix: None,
         }
     }
 }
@@ -280,6 +281,7 @@ mod tests {
                     help: None,
                     line: None,
                     column: None,
+                    fix: None,
                 }]
             } else {
                 vec![]
@@ -338,6 +340,7 @@ mod tests {
                 help: None,
                 line: None,
                 column: None,
+                fix: None,
             }]
         }
     }

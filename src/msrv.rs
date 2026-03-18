@@ -39,6 +39,7 @@ impl AnalysisPass for MsrvPass {
                 ),
                 line: None,
                 column: None,
+                fix: None,
             });
             return Ok(diagnostics);
         };
@@ -61,6 +62,7 @@ impl AnalysisPass for MsrvPass {
                 ),
                 line: None,
                 column: None,
+                fix: None,
             });
         }
 
@@ -80,6 +82,7 @@ impl AnalysisPass for MsrvPass {
                     )),
                     line: None,
                     column: None,
+                    fix: None,
                 });
             }
         }

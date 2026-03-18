@@ -13,6 +13,7 @@ fn test_diagnostic_json_snapshot() {
         help: Some("Use ? operator or handle the error explicitly".to_string()),
         line: Some(42),
         column: Some(10),
+        fix: None,
     };
     insta::assert_json_snapshot!("diagnostic_full", diag);
 }
@@ -28,6 +29,7 @@ fn test_diagnostic_minimal_json_snapshot() {
         help: None,
         line: None,
         column: None,
+        fix: None,
     };
     insta::assert_json_snapshot!("diagnostic_minimal", diag);
 }
@@ -68,6 +70,7 @@ fn test_scan_result_with_findings_snapshot() {
                 help: Some("Use ? operator".to_string()),
                 line: Some(10),
                 column: Some(5),
+                fix: None,
             },
             Diagnostic {
                 file_path: PathBuf::from("src/main.rs"),
@@ -78,6 +81,7 @@ fn test_scan_result_with_findings_snapshot() {
                 help: Some("Use environment variables".to_string()),
                 line: Some(3),
                 column: Some(9),
+                fix: None,
             },
         ],
         score: 72,

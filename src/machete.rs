@@ -114,6 +114,7 @@ fn parse_machete_output(output: &str) -> Vec<Diagnostic> {
                     )),
                     line: None,
                     column: None,
+                    fix: None,
                 });
             }
         }

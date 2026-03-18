@@ -288,6 +288,7 @@ mod tests {
                 help: None,
                 line: Some(1),
                 column: None,
+                fix: None,
             },
             Diagnostic {
                 file_path: PathBuf::from("src/lib.rs"),
@@ -298,6 +299,7 @@ mod tests {
                 help: None,
                 line: Some(1),
                 column: None,
+                fix: None,
             },
         ];
 
@@ -320,6 +322,7 @@ mod tests {
             help: None,
             line: Some(1),
             column: None,
+            fix: None,
         }];
 
         let changed: HashSet<PathBuf> = HashSet::from([PathBuf::from("src/main.rs")]);
@@ -340,6 +343,7 @@ mod tests {
             help: None,
             line: Some(1),
             column: None,
+            fix: None,
         }];
 
         let changed: HashSet<PathBuf> = HashSet::from([PathBuf::from("src/main.rs")]);

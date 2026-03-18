@@ -185,6 +185,7 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
                         help: Some(help.to_string()),
                         line: Some(span.start().line as u32),
                         column: Some(span.start().column as u32 + 1),
+                        fix: None,
                     });
                     matched = true;
                     break;
@@ -209,6 +210,7 @@ impl<'ast> Visit<'ast> for BlockingVisitor<'_> {
                             help: Some(help.to_string()),
                             line: Some(span.start().line as u32),
                             column: Some(span.start().column as u32 + 1),
+                            fix: None,
                         });
                     }
                 }
@@ -304,6 +306,7 @@ impl<'ast> Visit<'ast> for BlockOnVisitor<'_> {
                 help: Some("Use `.await` directly instead of `.block_on()`".to_string()),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_expr_method_call(self, i);
@@ -331,6 +334,7 @@ impl<'ast> Visit<'ast> for BlockOnVisitor<'_> {
                     help: Some("Use `.await` directly instead of `block_on()`".to_string()),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }

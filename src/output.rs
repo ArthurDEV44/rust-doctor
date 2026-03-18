@@ -511,6 +511,7 @@ mod tests {
             help: None,
             line: Some(1),
             column: None,
+            fix: None,
         }
     }
 

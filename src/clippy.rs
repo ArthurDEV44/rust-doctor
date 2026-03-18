@@ -792,6 +792,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                     help,
                     line,
                     column,
+                    fix: None,
                 });
             }
             Message::BuildFinished(finished) => {
@@ -856,6 +857,7 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 help: Some("Run `cargo build` to see the full error output".to_string()),
                 line: None,
                 column: None,
+                fix: None,
             });
         }
     }

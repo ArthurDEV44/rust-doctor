@@ -107,6 +107,7 @@ impl<'ast> Visit<'ast> for SecretVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -133,6 +134,7 @@ impl<'ast> Visit<'ast> for SecretVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_expr_assign(self, i);
@@ -158,6 +160,7 @@ impl<'ast> Visit<'ast> for SecretVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -184,6 +187,7 @@ impl<'ast> Visit<'ast> for SecretVisitor<'_> {
                     ),
                     line: Some(span.start().line as u32),
                     column: Some(span.start().column as u32 + 1),
+                    fix: None,
                 });
             }
         }
@@ -263,6 +267,7 @@ impl<'ast> Visit<'ast> for UnsafeVisitor<'_> {
             help: Some("Document the safety invariant with a // SAFETY: comment".to_string()),
             line: Some(span.start().line as u32),
             column: Some(span.start().column as u32 + 1),
+            fix: None,
         });
         syn::visit::visit_expr_unsafe(self, i);
     }
@@ -281,6 +286,7 @@ impl<'ast> Visit<'ast> for UnsafeVisitor<'_> {
                 ),
                 line: Some(span.start().line as u32),
                 column: Some(span.start().column as u32 + 1),
+                fix: None,
             });
         }
         syn::visit::visit_item_fn(self, i);
@@ -347,6 +353,7 @@ impl<'ast> Visit<'ast> for SqlVisitor<'_> {
                         ),
                         line: Some(span.start().line as u32),
                         column: Some(span.start().column as u32 + 1),
+                        fix: None,
                     });
                 }
             }

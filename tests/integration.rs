@@ -25,7 +25,7 @@ edition = "2021"
 }
 
 /// Create a `ResolvedConfig` that enables custom rules but skips external tools.
-const fn fast_config() -> ResolvedConfig {
+fn fast_config() -> ResolvedConfig {
     ResolvedConfig {
         verbose: false,
         diff: None,
@@ -34,6 +34,9 @@ const fn fast_config() -> ResolvedConfig {
         ignore_files: vec![],
         lint: true, // enable custom rules (+ clippy, but clippy won't affect assertions)
         dependencies: false, // skip audit + machete
+        rules_config: std::collections::HashMap::new(),
+        enable_rules: vec![],
+        score_fail_below: None,
     }
 }
 
