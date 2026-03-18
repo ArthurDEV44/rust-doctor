@@ -63,7 +63,7 @@ impl ScanOrchestrator {
             pb.set_style(
                 ProgressStyle::default_spinner()
                     .template("{spinner:.cyan} {msg} [{elapsed}]")
-                    .expect("valid spinner template")
+                    .unwrap_or_else(|_| ProgressStyle::default_spinner())
                     .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✓"]),
             );
             pb.set_message("Scanning...");

@@ -205,25 +205,18 @@ fn print_score_box(result: &ScanResult) {
         result.elapsed.as_secs_f64(),
     );
 
-    // Calculate box width
-    let content_lines = [
-        format!("│ {eyes} │"),
-        format!("│ {mouth} │"),
-        String::new(), // blank
-        score_text.clone(),
-        String::new(), // blank
-        bar.plain.clone(),
-        String::new(), // blank
-        dim_text.clone(),
-        String::new(), // blank
-        stats.clone(),
-    ];
-    let max_width = content_lines
-        .iter()
-        .map(|l| l.chars().count())
-        .max()
-        .unwrap_or(40)
-        .max(40);
+    // Calculate box width from content widths (avoid cloning strings)
+    let max_width = [
+        7, // face lines "│ X X │"
+        score_text.chars().count(),
+        bar.plain.chars().count(),
+        dim_text.chars().count(),
+        stats.chars().count(),
+    ]
+    .into_iter()
+    .max()
+    .unwrap_or(40)
+    .max(40);
     let inner_width = max_width + 2; // padding
 
     // Print box
@@ -433,16 +426,14 @@ fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
             }
         };
 
-        let count_suffix = if group.count > 1 {
-            format!(
+        eprint!("  {symbol} {}", group.message);
+        if group.count > 1 {
+            eprint!(
                 " {}",
                 format!("({})", group.count).if_supports_color(Stream::Stderr, |t| t.dimmed())
-            )
-        } else {
-            String::new()
-        };
-
-        eprintln!("  {symbol} {}{count_suffix}", group.message);
+            );
+        }
+        eprintln!();
 
         if let Some(ref help) = group.help {
             eprintln!(

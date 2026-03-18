@@ -119,11 +119,11 @@ const fn severity_to_sarif_level(severity: Severity) -> &'static str {
 }
 
 fn build_rules(diagnostics: &[Diagnostic]) -> Vec<ReportingDescriptor> {
-    let mut seen = std::collections::HashSet::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut rules = Vec::new();
 
     for d in diagnostics {
-        if seen.insert(d.rule.clone()) {
+        if seen.insert(&d.rule) {
             rules.push(ReportingDescriptor {
                 id: d.rule.clone(),
                 short_description: Message {

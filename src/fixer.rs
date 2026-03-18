@@ -44,17 +44,12 @@ pub fn apply_fixes(diagnostics: &[Diagnostic], project_root: &Path) -> usize {
 
         for fix in sorted_fixes {
             let line_idx = (fix.line as usize).saturating_sub(1);
-            if line_idx >= new_lines.len() {
-                continue;
-            }
-
-            let Some(line) = new_lines.get(line_idx) else {
-                continue;
-            };
-            if line.contains(&fix.old_text) {
-                let replaced = line.replacen(&fix.old_text, &fix.new_text, 1);
-                new_lines[line_idx] = replaced;
-                applied_in_file += 1;
+            if let Some(line) = new_lines.get_mut(line_idx) {
+                if line.contains(&fix.old_text) {
+                    let replaced = line.replacen(&fix.old_text, &fix.new_text, 1);
+                    *line = replaced;
+                    applied_in_file += 1;
+                }
             }
         }
 

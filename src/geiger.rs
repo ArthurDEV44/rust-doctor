@@ -118,7 +118,7 @@ fn parse_geiger_ascii(output: &str) -> Vec<Diagnostic> {
         }
 
         // Parse first column (functions) and second (expressions) as unsafe/total
-        let (Some(col_fns), Some(col_exprs)) = (columns.get(0), columns.get(1)) else {
+        let (Some(col_fns), Some(col_exprs)) = (columns.first(), columns.get(1)) else {
             continue;
         };
         let unsafe_fns = parse_unsafe_count(col_fns);

@@ -55,19 +55,16 @@ pub fn generate_plan(result: &ScanResult) -> Vec<RemediationItem> {
     let mut items: Vec<RemediationItem> = by_rule
         .into_iter()
         .filter(|(rule, _)| *rule != "skipped-pass") // Skip informational pass notices
-        .map(|(rule, diags)| {
-            let Some(first) = diags.first() else {
-                unreachable!("group_by guarantees non-empty groups");
-            };
-            let priority = classify_priority(rule, first.severity, &first.category);
-            let files: Vec<String> = diags
+        .filter_map(|(rule, diags)| {
+            let first = diags.first()?;
+            let priority = classify_priority(first.severity, &first.category);
+            let file_set: std::collections::HashSet<String> = diags
                 .iter()
                 .map(|d| d.file_path.to_string_lossy().into_owned())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
                 .collect();
+            let files: Vec<String> = file_set.into_iter().collect();
 
-            RemediationItem {
+            Some(RemediationItem {
                 priority,
                 rule: rule.to_string(),
                 count: diags.len(),
@@ -78,7 +75,7 @@ pub fn generate_plan(result: &ScanResult) -> Vec<RemediationItem> {
                     .clone()
                     .unwrap_or_else(|| "Review and fix manually".to_string()),
                 files,
-            }
+            })
         })
         .collect();
 
@@ -87,8 +84,7 @@ pub fn generate_plan(result: &ScanResult) -> Vec<RemediationItem> {
 }
 
 /// Classify a finding into a priority level.
-fn classify_priority(
-    rule: &str,
+const fn classify_priority(
     severity: Severity,
     category: &crate::diagnostics::Category,
 ) -> Priority {

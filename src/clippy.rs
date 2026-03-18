@@ -747,21 +747,22 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 
         match message {
             Message::CompilerMessage(compiler_msg) => {
-                let diag = &compiler_msg.message;
+                let mut diag = compiler_msg.message;
 
                 // Filter: only process error and warning level messages
-                let clippy_severity = match diag.level {
+                let clippy_severity = match &diag.level {
                     DiagnosticLevel::Error | DiagnosticLevel::Ice => Severity::Error,
                     DiagnosticLevel::Warning => Severity::Warning,
                     _ => continue,
                 };
+                let is_ice = diag.level == DiagnosticLevel::Ice;
 
-                // Extract code (lint name)
-                let rule = match &diag.code {
-                    Some(code) => code.code.clone(),
+                // Extract code (lint name) — take() avoids cloning
+                let rule = match diag.code.take() {
+                    Some(code) => code.code,
                     None => {
                         if clippy_severity == Severity::Error {
-                            if diag.level == DiagnosticLevel::Ice {
+                            if is_ice {
                                 "compiler-ice".to_string()
                             } else {
                                 "compiler-error".to_string()
@@ -790,19 +791,21 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
                 let severity = resolve_severity(&rule, clippy_severity);
 
                 // Extract help: prefer children help message, fall back to rendered
+                // Move fields instead of cloning
+                let rendered = diag.rendered;
                 let help = diag
                     .children
-                    .iter()
+                    .into_iter()
                     .find(|c| c.level == DiagnosticLevel::Help)
-                    .map(|c| c.message.clone())
-                    .or_else(|| diag.rendered.clone());
+                    .map(|c| c.message)
+                    .or(rendered);
 
                 diagnostics.push(Diagnostic {
                     file_path,
                     rule,
                     category,
                     severity,
-                    message: diag.message.clone(),
+                    message: diag.message,
                     help,
                     line,
                     column,

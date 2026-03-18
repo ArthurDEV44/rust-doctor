@@ -29,22 +29,23 @@ pub fn apply_inline_suppressions(
     }
 
     // Collect unique file paths that have diagnostics with line numbers
-    let files_to_check: Vec<PathBuf> = diagnostics
+    let file_set: std::collections::HashSet<PathBuf> = diagnostics
         .iter()
         .filter(|d| d.line.is_some())
         .map(|d| d.file_path.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
         .collect();
+    let files_to_check: Vec<PathBuf> = file_set.into_iter().collect();
 
     // Parse suppression comments from each file
     let mut suppressions: HashMap<PathBuf, Vec<Suppression>> = HashMap::new();
-    for file_path in &files_to_check {
+    for file_path in files_to_check {
         // Try absolute path first, then relative to project root
-        let abs_path = if file_path.is_absolute() {
-            file_path.clone()
+        let abs_buf;
+        let abs_path: &Path = if file_path.is_absolute() {
+            &file_path
         } else {
-            project_root.join(file_path)
+            abs_buf = project_root.join(&file_path);
+            &abs_buf
         };
 
         // Guard: only read files under the project root to prevent path traversal
@@ -55,10 +56,10 @@ pub fn apply_inline_suppressions(
             continue; // skip out-of-tree files
         }
 
-        if let Ok(content) = fs::read_to_string(&abs_path) {
+        if let Ok(content) = fs::read_to_string(abs_path) {
             let file_suppressions = parse_suppressions(&content);
             if !file_suppressions.is_empty() {
-                suppressions.insert(file_path.clone(), file_suppressions);
+                suppressions.insert(file_path, file_suppressions);
             }
         }
     }

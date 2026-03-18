@@ -207,9 +207,9 @@ impl RuleEngine {
             .collect();
 
         // Update the cache with newly scanned results
-        for (rel_path, content, diagnostics) in &stale_results {
-            all_diagnostics.extend(diagnostics.clone());
-            scan_cache.update(rel_path, content, diagnostics.clone());
+        for (rel_path, content, diagnostics) in stale_results {
+            all_diagnostics.extend_from_slice(&diagnostics);
+            scan_cache.update(&rel_path, &content, diagnostics);
         }
 
         // Persist the updated cache (best-effort)
