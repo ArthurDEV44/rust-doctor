@@ -1,6 +1,6 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 85
+assertion_line: 99
 expression: result
 ---
 {
@@ -28,6 +28,13 @@ expression: result
   ],
   "score": 72,
   "score_label": "Needs work",
+  "dimension_scores": {
+    "security": 90,
+    "reliability": 100,
+    "maintainability": 100,
+    "performance": 100,
+    "dependencies": 100
+  },
   "source_file_count": 8,
   "elapsed": 5.678,
   "skipped_passes": [

@@ -1,4 +1,4 @@
-use crate::diagnostics::{Diagnostic, ScoreLabel};
+use crate::diagnostics::{Diagnostic, DimensionScores, ScoreLabel};
 use crate::{clippy, config, discovery, rules, scan};
 use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::tool::ToolRouter;
@@ -98,6 +98,8 @@ pub struct ScanOutput {
     pub score: u32,
     /// Human-readable score label.
     pub score_label: ScoreLabel,
+    /// Per-dimension health scores.
+    pub dimension_scores: DimensionScores,
     /// Number of source files that were analyzed.
     pub source_file_count: usize,
     /// Total scan duration in seconds.
@@ -225,6 +227,7 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
             diagnostics: result.diagnostics,
             score: result.score,
             score_label: result.score_label,
+            dimension_scores: result.dimension_scores,
             source_file_count: result.source_file_count,
             elapsed_secs: result.elapsed.as_secs_f64(),
             skipped_passes: result.skipped_passes,

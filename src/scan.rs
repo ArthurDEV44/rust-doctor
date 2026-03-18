@@ -1,7 +1,10 @@
 use crate::config::ResolvedConfig;
 use crate::diagnostics::{Diagnostic, ScanResult, Severity};
 use crate::discovery::ProjectInfo;
-use crate::{audit, clippy, config, diff, machete, output, rules, scanner, suppression, workspace};
+use crate::{
+    audit, clippy, config, deny, diff, machete, msrv, output, rules, scanner, suppression,
+    workspace,
+};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -184,9 +187,23 @@ fn build_passes(
     }
 
     if resolved.dependencies && !is_diff_mode {
-        passes.push(Box::new(audit::AuditPass { offline }));
+        // Prefer cargo-deny (advisory + license + ban + source checks).
+        // Fall back to cargo-audit for advisory-only checks when cargo-deny
+        // is not installed.
+        let deny_pass = deny::DenyPass { offline };
+        if deny::is_cargo_deny_available() {
+            passes.push(Box::new(deny_pass));
+        } else {
+            passes.push(Box::new(deny_pass)); // still push to emit the Skipped diagnostic
+            passes.push(Box::new(audit::AuditPass { offline }));
+        }
         passes.push(Box::new(machete::MachetePass));
     }
+
+    // MSRV validation always runs (not gated by config flags).
+    passes.push(Box::new(msrv::MsrvPass {
+        rust_version: project_info.rust_version.clone(),
+    }));
 
     passes
 }
@@ -282,7 +299,7 @@ fn build_result(
         .iter()
         .filter(|d| d.severity == Severity::Info)
         .count();
-    let (score, score_label) = output::calculate_score(&diagnostics);
+    let (score, score_label, dimension_scores) = output::calculate_score(&diagnostics);
 
     skipped_passes.sort();
     skipped_passes.dedup();
@@ -291,6 +308,7 @@ fn build_result(
         diagnostics,
         score,
         score_label,
+        dimension_scores,
         source_file_count,
         elapsed,
         skipped_passes,

@@ -144,11 +144,13 @@ pub fn add(a: i32, b: i32) -> i32 {
 
     let result = scan_project(&project_info, &config, true, &[], true).unwrap();
 
-    // Filter out clippy lints — only check custom rules
+    // Filter out clippy lints and informational pass diagnostics — only check custom rules
     let custom_diags: Vec<_> = result
         .diagnostics
         .iter()
-        .filter(|d| !d.rule.starts_with("clippy::"))
+        .filter(|d| {
+            !d.rule.starts_with("clippy::") && d.rule != "skipped-pass" && d.rule != "missing-msrv"
+        })
         .collect();
 
     assert!(

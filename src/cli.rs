@@ -22,8 +22,12 @@ pub struct Cli {
     pub score: bool,
 
     /// Output full scan results as JSON
-    #[arg(long, conflicts_with = "score")]
+    #[arg(long, conflicts_with_all = ["score", "sarif"])]
     pub json: bool,
+
+    /// Output results in SARIF 2.1.0 format (for GitHub Code Scanning, GitLab SAST)
+    #[arg(long, conflicts_with_all = ["score", "json"])]
+    pub sarif: bool,
 
     /// Scan only changed files vs a base branch
     #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "BASE")]

@@ -85,14 +85,19 @@ pub mod error;
 pub mod mcp;
 /// Terminal, JSON, and score output rendering.
 pub mod output;
+/// SARIF 2.1.0 output for CI/CD integration.
+pub mod sarif;
 /// Top-level scan pipeline that orchestrates all analysis passes.
 pub mod scan;
 
 // Internal implementation modules
 pub(crate) mod audit;
 pub(crate) mod clippy;
+pub(crate) mod deny;
 pub(crate) mod diff;
+pub(crate) mod geiger;
 pub(crate) mod machete;
+pub(crate) mod msrv;
 pub(crate) mod process;
 pub(crate) mod rules;
 pub(crate) mod scanner;

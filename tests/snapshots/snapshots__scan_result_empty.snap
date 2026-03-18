@@ -1,12 +1,19 @@
 ---
 source: tests/snapshots.rs
-assertion_line: 48
+assertion_line: 55
 expression: result
 ---
 {
   "diagnostics": [],
   "score": 100,
   "score_label": "Great",
+  "dimension_scores": {
+    "security": 100,
+    "reliability": 100,
+    "maintainability": 100,
+    "performance": 100,
+    "dependencies": 100
+  },
   "source_file_count": 15,
   "elapsed": 1.234,
   "skipped_passes": [],

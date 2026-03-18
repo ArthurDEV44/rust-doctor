@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use rust_doctor::cli::{Cli, FailOn};
-use rust_doctor::{config, discovery, output, scan};
+use rust_doctor::{config, discovery, output, sarif, scan};
 use std::process;
 
 fn main() {
@@ -43,7 +43,7 @@ fn main() {
     let resolved = config::resolve_config(&cli, effective_config);
 
     // Run scan
-    let suppress_spinner = cli.score || cli.json;
+    let suppress_spinner = cli.score || cli.json || cli.sarif;
     let scan_result = match scan::scan_project(
         &project_info,
         &resolved,
@@ -65,6 +65,14 @@ fn main() {
         if let Err(e) = output::render_json(&scan_result) {
             eprintln!("Error: failed to serialize scan results: {e}");
             process::exit(1);
+        }
+    } else if cli.sarif {
+        match sarif::render_sarif(&scan_result) {
+            Ok(sarif_json) => println!("{sarif_json}"),
+            Err(e) => {
+                eprintln!("Error: failed to serialize SARIF output: {e}");
+                process::exit(1);
+            }
         }
     } else {
         output::render_terminal(&scan_result, resolved.verbose);

@@ -105,6 +105,22 @@ impl std::fmt::Display for ScoreLabel {
     }
 }
 
+/// Per-dimension health scores.
+#[derive(Debug, Serialize)]
+#[cfg_attr(feature = "mcp", derive(schemars::JsonSchema))]
+pub struct DimensionScores {
+    /// Security dimension score (0–100). Covers Security and Dependencies (advisory) categories.
+    pub security: u32,
+    /// Reliability dimension score (0–100). Covers Correctness and ErrorHandling categories.
+    pub reliability: u32,
+    /// Maintainability dimension score (0–100). Covers Architecture and Style categories.
+    pub maintainability: u32,
+    /// Performance dimension score (0–100). Covers Performance category.
+    pub performance: u32,
+    /// Dependencies dimension score (0–100). Covers Cargo and Dependencies categories.
+    pub dependencies: u32,
+}
+
 /// Result of a complete scan across all analysis passes.
 #[derive(Debug, Serialize)]
 pub struct ScanResult {
@@ -114,6 +130,8 @@ pub struct ScanResult {
     pub score: u32,
     /// Score label.
     pub score_label: ScoreLabel,
+    /// Per-dimension health scores.
+    pub dimension_scores: DimensionScores,
     /// Number of source files scanned.
     pub source_file_count: usize,
     /// Total scan duration.
@@ -197,6 +215,13 @@ mod tests {
             diagnostics: vec![],
             score: 100,
             score_label: ScoreLabel::Great,
+            dimension_scores: DimensionScores {
+                security: 100,
+                reliability: 100,
+                maintainability: 100,
+                performance: 100,
+                dependencies: 100,
+            },
             source_file_count: 10,
             elapsed: Duration::from_millis(1500),
             skipped_passes: vec![],
