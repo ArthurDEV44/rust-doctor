@@ -82,9 +82,14 @@ impl AnalysisPass for CoveragePass {
             }
         }
 
-        // Emit info diagnostics for completely uncovered files
+        // Emit info diagnostics for completely uncovered files.
+        // Skip binary entry points (main.rs, bin/*.rs) — they are structurally
+        // unreachable by `cargo test` and would always report 0% coverage.
         for record in &file_records {
-            if record.lines_hit == 0 && record.lines_total > 0 {
+            if record.lines_hit == 0
+                && record.lines_total > 0
+                && !is_binary_entry_point(&record.source_file)
+            {
                 diagnostics.push(Diagnostic {
                     file_path: PathBuf::from(&record.source_file),
                     rule: "uncovered-file".to_string(),
@@ -104,6 +109,17 @@ impl AnalysisPass for CoveragePass {
 
         Ok(diagnostics)
     }
+}
+
+/// Returns `true` if the path is a binary entry point that `cargo test` cannot cover.
+fn is_binary_entry_point(path: &str) -> bool {
+    let p = std::path::Path::new(path);
+    let file_name = p.file_name().and_then(|f| f.to_str()).unwrap_or("");
+    if file_name == "main.rs" {
+        return true;
+    }
+    // Also skip files under src/bin/ or bin/
+    p.components().any(|c| c.as_os_str() == "bin")
 }
 
 /// A parsed record for a single source file in an LCOV report.
