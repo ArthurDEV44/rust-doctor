@@ -29,6 +29,14 @@ pub fn run_with_timeout(
         .take()
         .ok_or("failed to capture subprocess stdout")?;
 
+    // Drain stderr in background to prevent pipe deadlock if caller piped it
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let _ = std::io::copy(&mut stderr.take(1024 * 1024), &mut std::io::sink());
+        });
+    }
+
     // Cancellable timeout watchdog
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
     let child = Arc::new(Mutex::new(child));

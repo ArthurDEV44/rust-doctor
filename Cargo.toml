@@ -1,6 +1,6 @@
 [package]
 name = "rust-doctor"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 rust-version = "1.85"
 description = "A unified code health tool for Rust — scan, score, and fix your codebase"
@@ -9,7 +9,7 @@ repository = "https://github.com/ArthurDEV44/rust-doctor"
 readme = "README.md"
 keywords = ["lint", "clippy", "code-quality", "health", "diagnostics"]
 categories = ["development-tools", "command-line-utilities"]
-exclude = ["npm/", ".claude-plugin/", ".claude/", ".meta/", "tasks/", "server.json"]
+exclude = ["npm/", ".claude-plugin/", ".claude/", ".meta/", "tasks/", "server.json", "website/"]
 
 [dependencies]
 cargo_metadata = "0.19"

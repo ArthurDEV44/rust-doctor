@@ -192,12 +192,21 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
                 .await;
         }
 
-        // Run the CPU-bound scan on a blocking thread to avoid starving the tokio runtime
+        // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
         let offline = input.offline;
-        let result = tokio::task::spawn_blocking(move || {
-            scan::scan_project(&project_info, &resolved, offline, &[], true)
-        })
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            tokio::task::spawn_blocking(move || {
+                scan::scan_project(&project_info, &resolved, offline, &[], true)
+            }),
+        )
         .await
+        .map_err(|_| {
+            McpError::internal_error(
+                "scan timed out after 5 minutes — project may be too large or a subprocess is hanging",
+                None,
+            )
+        })?
         .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
         .map_err(|e| {
             eprintln!("MCP scan error: {e}");
@@ -251,12 +260,21 @@ If you also need the diagnostics, use scan instead — it includes the score too
         let input = params.0;
         let (_dir, project_info, resolved) = discover_and_resolve(&input.directory, false)?;
 
-        // Run the CPU-bound scan on a blocking thread to avoid starving the tokio runtime
+        // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
         let offline = input.offline;
-        let result = tokio::task::spawn_blocking(move || {
-            scan::scan_project(&project_info, &resolved, offline, &[], true)
-        })
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            tokio::task::spawn_blocking(move || {
+                scan::scan_project(&project_info, &resolved, offline, &[], true)
+            }),
+        )
         .await
+        .map_err(|_| {
+            McpError::internal_error(
+                "scan timed out after 5 minutes — project may be too large or a subprocess is hanging",
+                None,
+            )
+        })?
         .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
         .map_err(|e| {
             eprintln!("MCP score error: {e}");

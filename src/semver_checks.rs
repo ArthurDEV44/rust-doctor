@@ -54,7 +54,7 @@ fn run_semver_checks(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         .args(["semver-checks", "check-release"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("failed to spawn cargo semver-checks: {e}"))?;
 

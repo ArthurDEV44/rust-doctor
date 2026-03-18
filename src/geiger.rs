@@ -55,7 +55,7 @@ fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         .args(["geiger"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("failed to spawn cargo geiger: {e}"))?;
 
