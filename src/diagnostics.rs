@@ -1,11 +1,11 @@
 #[cfg(feature = "mcp")]
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
 /// Severity of a diagnostic finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -25,7 +25,7 @@ impl std::fmt::Display for Severity {
 }
 
 /// Category of a diagnostic rule.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(JsonSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum Category {
@@ -59,7 +59,7 @@ impl std::fmt::Display for Category {
 }
 
 /// A machine-applicable code fix suggestion.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(JsonSchema))]
 pub struct CodeFix {
     /// The text to find (exact match in the source line).
@@ -71,7 +71,7 @@ pub struct CodeFix {
 }
 
 /// A single diagnostic finding from an analysis pass.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "mcp", derive(JsonSchema))]
 pub struct Diagnostic {
     /// Path to the source file (relative to project root).

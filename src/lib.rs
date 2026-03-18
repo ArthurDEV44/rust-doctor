@@ -94,6 +94,7 @@ pub mod scan;
 
 // Internal implementation modules
 pub(crate) mod audit;
+pub(crate) mod cache;
 pub(crate) mod clippy;
 pub(crate) mod coverage;
 pub(crate) mod deny;

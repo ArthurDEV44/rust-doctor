@@ -4,6 +4,7 @@ pub mod framework;
 pub mod performance;
 pub mod security;
 
+use crate::cache::{self, ScanCache};
 use crate::diagnostics::{Category, Diagnostic, Severity};
 use crate::scanner::{self, AnalysisPass};
 use globset::GlobSet;
@@ -103,8 +104,23 @@ impl RuleEngine {
     /// matching the ignore patterns. Returns collected diagnostics.
     ///
     /// Each file is read from disk once and cached in memory for the duration
-    /// of this scan. The cache is dropped when this method returns.
+    /// of this scan. Unchanged files reuse cached diagnostics from the
+    /// incremental scan cache (`.rust-doctor-cache.json`).
     pub fn scan(&self, project_root: &Path, ignore_files: &[String]) -> Vec<Diagnostic> {
+        self.scan_with_config(project_root, ignore_files, &[], &[])
+    }
+
+    /// Scan with full config context for cache key computation.
+    ///
+    /// This is the main implementation; [`scan`](Self::scan) delegates here
+    /// with empty config slices for backward compatibility.
+    pub fn scan_with_config(
+        &self,
+        project_root: &Path,
+        ignore_files: &[String],
+        ignore_rules: &[String],
+        enable_rules: &[String],
+    ) -> Vec<Diagnostic> {
         if self.rules.is_empty() {
             return vec![];
         }
@@ -123,8 +139,14 @@ impl RuleEngine {
         // Build ignore glob set
         let ignore_set = build_ignore_set(ignore_files);
 
-        // Read all files into a cache (holds all scanned .rs content in memory)
-        let file_cache: Vec<(std::path::PathBuf, String)> = files
+        // Compute config hash and try loading the incremental cache
+        let config_hash =
+            cache::compute_config_hash(ignore_rules, ignore_files, enable_rules);
+        let mut scan_cache = ScanCache::load(project_root, &config_hash)
+            .unwrap_or_else(|| ScanCache::new(config_hash.clone()));
+
+        // Read all files into memory, filtering ignored paths
+        let file_contents: Vec<(std::path::PathBuf, String)> = files
             .into_iter()
             .filter_map(|file_path| {
                 let rel_path = file_path.strip_prefix(project_root).unwrap_or(&file_path);
@@ -143,27 +165,61 @@ impl RuleEngine {
             })
             .collect();
 
-        // Process cached files in parallel with rayon
-        file_cache
+        // Partition into fresh (cache hit) and stale (need scanning) files
+        let (fresh, stale): (Vec<_>, Vec<_>) =
+            file_contents.iter().partition(|(file_path, content)| {
+                let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
+                scan_cache.is_fresh(rel_path, content)
+            });
+
+        // Collect cached diagnostics for fresh files
+        let mut all_diagnostics: Vec<Diagnostic> = fresh
+            .iter()
+            .flat_map(|(file_path, _content)| {
+                let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
+                scan_cache
+                    .get_cached_diagnostics(rel_path)
+                    .unwrap_or(&[])
+                    .to_vec()
+            })
+            .collect();
+
+        // Process stale files in parallel with rayon
+        let stale_results: Vec<(std::path::PathBuf, String, Vec<Diagnostic>)> = stale
             .par_iter()
-            .flat_map(|(file_path, content): &(std::path::PathBuf, String)| {
+            .map(|(file_path, content): &(std::path::PathBuf, String)| {
                 let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
 
-                let syntax = match syn::parse_file(content) {
-                    Ok(ast) => ast,
+                let diagnostics = match syn::parse_file(content) {
+                    Ok(syntax) => self
+                        .rules
+                        .iter()
+                        .flat_map(|rule| run_rule_safely(rule.as_ref(), &syntax, rel_path))
+                        .collect::<Vec<_>>(),
                     Err(e) => {
                         eprintln!("Warning: parse error in '{}': {e}", rel_path.display());
-                        return vec![];
+                        vec![]
                     }
                 };
 
-                // Run all rules on this file, catching panics
-                self.rules
-                    .iter()
-                    .flat_map(|rule| run_rule_safely(rule.as_ref(), &syntax, rel_path))
-                    .collect::<Vec<_>>()
+                (
+                    rel_path.to_path_buf(),
+                    content.clone(),
+                    diagnostics,
+                )
             })
-            .collect()
+            .collect();
+
+        // Update the cache with newly scanned results
+        for (rel_path, content, diagnostics) in stale_results {
+            all_diagnostics.extend(diagnostics.clone());
+            scan_cache.update(&rel_path, &content, diagnostics);
+        }
+
+        // Persist the updated cache (best-effort)
+        scan_cache.save(project_root);
+
+        all_diagnostics
     }
 }
 
@@ -219,6 +275,8 @@ fn build_ignore_set(patterns: &[String]) -> Result<GlobSet, globset::Error> {
 pub struct RuleEnginePass {
     engine: RuleEngine,
     ignore_files: Vec<String>,
+    ignore_rules: Vec<String>,
+    enable_rules: Vec<String>,
 }
 
 impl RuleEnginePass {
@@ -226,6 +284,23 @@ impl RuleEnginePass {
         Self {
             engine: RuleEngine::new(rules),
             ignore_files,
+            ignore_rules: vec![],
+            enable_rules: vec![],
+        }
+    }
+
+    /// Create a new pass with full config context for incremental caching.
+    pub fn with_config(
+        rules: Vec<Box<dyn CustomRule>>,
+        ignore_files: Vec<String>,
+        ignore_rules: Vec<String>,
+        enable_rules: Vec<String>,
+    ) -> Self {
+        Self {
+            engine: RuleEngine::new(rules),
+            ignore_files,
+            ignore_rules,
+            enable_rules,
         }
     }
 }
@@ -236,7 +311,12 @@ impl AnalysisPass for RuleEnginePass {
     }
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
-        Ok(self.engine.scan(project_root, &self.ignore_files))
+        Ok(self.engine.scan_with_config(
+            project_root,
+            &self.ignore_files,
+            &self.ignore_rules,
+            &self.enable_rules,
+        ))
     }
 }
 

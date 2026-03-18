@@ -23,6 +23,10 @@ inputs:
     description: 'Run in diff mode on PRs (scan only changed files). Auto-detects: enabled on pull_request, disabled on push.'
     required: false
     default: 'auto'
+  sarif:
+    description: 'Upload SARIF results to GitHub Code Scanning (requires write permissions)'
+    required: false
+    default: 'false'
 
 outputs:
   score:
@@ -34,6 +38,9 @@ outputs:
   warnings:
     description: 'Number of warnings found'
     value: ${{ steps.scan.outputs.warnings }}
+  sarif-file:
+    description: 'Path to the generated SARIF file (if sarif input is true)'
+    value: ${{ steps.sarif-scan.outputs.sarif_file }}
 
 runs:
   using: 'composite'
@@ -193,3 +200,21 @@ ${TOP_DIAGS}
         fi
 
         rm -f "$COMMENT_FILE"
+
+    - name: Generate SARIF report
+      id: sarif-scan
+      if: inputs.sarif == 'true'
+      shell: bash
+      env:
+        INPUT_DIRECTORY: ${{ inputs.directory }}
+      run: |
+        SARIF_FILE="${RUNNER_TEMP:-/tmp}/rust-doctor-results.sarif"
+        rust-doctor "${INPUT_DIRECTORY}" --sarif > "$SARIF_FILE" 2>/dev/null || true
+        echo "sarif_file=${SARIF_FILE}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: inputs.sarif == 'true' && steps.sarif-scan.outputs.sarif_file != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.sarif-scan.outputs.sarif_file }}
+        category: rust-doctor
