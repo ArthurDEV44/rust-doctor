@@ -1,0 +1,40 @@
+{
+  "name": "rust-doctor",
+  "version": "0.1.0",
+  "description": "A unified code health tool for Rust — scan, score, and fix your codebase",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArthurDEV44/rust-doctor"
+  },
+  "homepage": "https://github.com/ArthurDEV44/rust-doctor",
+  "keywords": [
+    "rust",
+    "linting",
+    "code-quality",
+    "health",
+    "diagnostics",
+    "mcp",
+    "clippy"
+  ],
+  "bin": {
+    "rust-doctor": "bin/rust-doctor.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "optionalDependencies": {
+    "@rust-doctor/darwin-x64": "0.1.0",
+    "@rust-doctor/darwin-arm64": "0.1.0",
+    "@rust-doctor/linux-x64": "0.1.0",
+    "@rust-doctor/linux-arm64": "0.1.0",
+    "@rust-doctor/win32-x64": "0.1.0"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "files": [
+    "bin/",
+    "install.js"
+  ]
+}

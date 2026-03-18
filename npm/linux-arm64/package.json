@@ -1,0 +1,17 @@
+{
+  "name": "@rust-doctor/linux-arm64",
+  "version": "0.1.0",
+  "description": "rust-doctor native binary for Linux ARM64",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArthurDEV44/rust-doctor"
+  },
+  "os": ["linux"],
+  "cpu": ["arm64"],
+  "bin": {
+    "rust-doctor": "bin/rust-doctor"
+  },
+  "files": ["bin/"],
+  "preferUnplugged": true
+}

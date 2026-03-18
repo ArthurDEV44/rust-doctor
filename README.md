@@ -22,6 +22,20 @@ rust-doctor scans Rust projects for security, performance, correctness, architec
 
 ## Installation
 
+### npm / npx (recommended for MCP users)
+
+```bash
+npx rust-doctor --mcp
+```
+
+Or install globally:
+
+```bash
+npm install -g rust-doctor
+```
+
+This downloads a pre-built native binary for your platform — no Rust toolchain required.
+
 ### cargo install (from source)
 
 ```bash
@@ -108,7 +122,19 @@ All tools are read-only (`readOnlyHint: true`).
 
 ### Claude Code
 
-Add to your `~/.claude/settings.json`:
+**One-command install:**
+
+```bash
+claude mcp add --transport stdio rust-doctor -- npx -y rust-doctor --mcp
+```
+
+**Or via Claude Code plugin:**
+
+```
+/plugin install rust-doctor@ArthurDEV44/rust-doctor
+```
+
+**Or add manually** to your `~/.claude/settings.json`:
 
 ```json
 {
@@ -116,6 +142,19 @@ Add to your `~/.claude/settings.json`:
     "rust-doctor": {
       "command": "rust-doctor",
       "args": ["--mcp"]
+    }
+  }
+}
+```
+
+**Or share with your team** via `.mcp.json` in your project root (committed to git):
+
+```json
+{
+  "mcpServers": {
+    "rust-doctor": {
+      "command": "npx",
+      "args": ["-y", "rust-doctor", "--mcp"]
     }
   }
 }
@@ -129,8 +168,26 @@ Add to your `.cursor/mcp.json`:
 {
   "mcpServers": {
     "rust-doctor": {
-      "command": "rust-doctor",
-      "args": ["--mcp"]
+      "command": "npx",
+      "args": ["-y", "rust-doctor", "--mcp"]
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to your `.vscode/settings.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "rust-doctor": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "rust-doctor", "--mcp"]
+      }
     }
   }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "@rust-doctor/darwin-arm64",
+  "version": "0.1.0",
+  "description": "rust-doctor native binary for macOS ARM64",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ArthurDEV44/rust-doctor"
+  },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "bin": {
+    "rust-doctor": "bin/rust-doctor"
+  },
+  "files": ["bin/"],
+  "preferUnplugged": true
+}
