@@ -420,7 +420,7 @@ mod tests {
         let info = discover_project(&manifest, false).unwrap();
 
         assert_eq!(info.name, "rust-doctor");
-        assert_eq!(info.version, "0.1.0");
+        assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
         assert_eq!(info.edition, "2024");
         assert!(!info.is_workspace);
         assert_eq!(info.member_count, 1);
