@@ -5,6 +5,7 @@
 
 use crate::diagnostics::{Diagnostic, ScanResult, Severity};
 use serde::Serialize;
+use std::borrow::Cow;
 
 const SARIF_SCHEMA: &str =
     "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0-rtm.5.json";
@@ -17,42 +18,42 @@ const TOOL_NAME: &str = "rust-doctor";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SarifLog {
+struct SarifLog<'a> {
     #[serde(rename = "$schema")]
     schema: &'static str,
     version: &'static str,
-    runs: Vec<Run>,
+    runs: Vec<Run<'a>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Run {
-    tool: Tool,
-    results: Vec<Result_>,
+struct Run<'a> {
+    tool: Tool<'a>,
+    results: Vec<Result_<'a>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Tool {
-    driver: ToolComponent,
+struct Tool<'a> {
+    driver: ToolComponent<'a>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ToolComponent {
+struct ToolComponent<'a> {
     name: &'static str,
     version: String,
     information_uri: &'static str,
-    rules: Vec<ReportingDescriptor>,
+    rules: Vec<ReportingDescriptor<'a>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReportingDescriptor {
-    id: String,
-    short_description: Message,
+struct ReportingDescriptor<'a> {
+    id: &'a str,
+    short_description: Message<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    help_uri: Option<String>,
+    help_uri: Option<&'a str>,
     default_configuration: DefaultConfiguration,
 }
 
@@ -64,37 +65,37 @@ struct DefaultConfiguration {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Result_ {
-    rule_id: String,
+struct Result_<'a> {
+    rule_id: &'a str,
     level: &'static str,
-    message: Message,
-    locations: Vec<Location>,
+    message: Message<'a>,
+    locations: Vec<Location<'a>>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Message {
-    text: String,
+struct Message<'a> {
+    text: Cow<'a, str>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Location {
-    physical_location: PhysicalLocation,
+struct Location<'a> {
+    physical_location: PhysicalLocation<'a>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct PhysicalLocation {
-    artifact_location: ArtifactLocation,
+struct PhysicalLocation<'a> {
+    artifact_location: ArtifactLocation<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     region: Option<Region>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ArtifactLocation {
-    uri: String,
+struct ArtifactLocation<'a> {
+    uri: Cow<'a, str>,
     uri_base_id: &'static str,
 }
 
@@ -118,18 +119,18 @@ const fn severity_to_sarif_level(severity: Severity) -> &'static str {
     }
 }
 
-fn build_rules(diagnostics: &[Diagnostic]) -> Vec<ReportingDescriptor> {
+fn build_rules(diagnostics: &[Diagnostic]) -> Vec<ReportingDescriptor<'_>> {
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut rules = Vec::new();
 
     for d in diagnostics {
         if seen.insert(&d.rule) {
             rules.push(ReportingDescriptor {
-                id: d.rule.clone(),
+                id: &d.rule,
                 short_description: Message {
-                    text: d.message.clone(),
+                    text: Cow::Borrowed(&d.message),
                 },
-                help_uri: d.help.clone(),
+                help_uri: d.help.as_deref(),
                 default_configuration: DefaultConfiguration {
                     level: severity_to_sarif_level(d.severity),
                 },
@@ -140,25 +141,25 @@ fn build_rules(diagnostics: &[Diagnostic]) -> Vec<ReportingDescriptor> {
     rules
 }
 
-fn diagnostic_to_result(d: &Diagnostic) -> Result_ {
+fn diagnostic_to_result(d: &Diagnostic) -> Result_<'_> {
     let region = d.line.map(|line| Region {
         start_line: line,
         start_column: d.column,
     });
 
+    let text = match &d.help {
+        Some(help) => Cow::Owned(format!("{} — {help}", d.message)),
+        None => Cow::Borrowed(d.message.as_str()),
+    };
+
     Result_ {
-        rule_id: d.rule.clone(),
+        rule_id: &d.rule,
         level: severity_to_sarif_level(d.severity),
-        message: Message {
-            text: d.help.as_ref().map_or_else(
-                || d.message.clone(),
-                |help| format!("{} — {help}", d.message),
-            ),
-        },
+        message: Message { text },
         locations: vec![Location {
             physical_location: PhysicalLocation {
                 artifact_location: ArtifactLocation {
-                    uri: d.file_path.to_string_lossy().into_owned(),
+                    uri: d.file_path.to_string_lossy(),
                     uri_base_id: "%SRCROOT%",
                 },
                 region,
@@ -178,7 +179,7 @@ fn diagnostic_to_result(d: &Diagnostic) -> Result_ {
 /// Returns an error if JSON serialization fails.
 pub fn render_sarif(scan_result: &ScanResult) -> Result<String, serde_json::Error> {
     let rules = build_rules(&scan_result.diagnostics);
-    let results: Vec<Result_> = scan_result
+    let results: Vec<Result_<'_>> = scan_result
         .diagnostics
         .iter()
         .map(diagnostic_to_result)

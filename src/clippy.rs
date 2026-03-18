@@ -678,6 +678,149 @@ impl Drop for ClippyConfigGuard {
     }
 }
 
+/// Process a single clippy compiler message into a `Diagnostic`, if applicable.
+fn process_compiler_message(
+    diag: &mut cargo_metadata::diagnostic::Diagnostic,
+) -> Option<Diagnostic> {
+    // Filter: only process error and warning level messages
+    let clippy_severity = match &diag.level {
+        DiagnosticLevel::Error | DiagnosticLevel::Ice => Severity::Error,
+        DiagnosticLevel::Warning => Severity::Warning,
+        _ => return None,
+    };
+    let is_ice = diag.level == DiagnosticLevel::Ice;
+
+    // Extract code (lint name) — take() avoids cloning
+    let rule = match diag.code.take() {
+        Some(code) => code.code,
+        None if clippy_severity == Severity::Error => if is_ice {
+            "compiler-ice"
+        } else {
+            "compiler-error"
+        }
+        .to_string(),
+        None => return None,
+    };
+
+    // Extract primary span
+    let primary_span = diag.spans.iter().find(|s| s.is_primary);
+    let (file_path, line, column) = primary_span.map_or_else(
+        || (PathBuf::from("<unknown>"), None, None),
+        |span| {
+            (
+                PathBuf::from(&span.file_name),
+                Some(span.line_start as u32),
+                Some(span.column_start as u32),
+            )
+        },
+    );
+
+    // Apply registry: category and severity override
+    let category = map_lint_category(&rule);
+    let severity = resolve_severity(&rule, clippy_severity);
+
+    // Extract help: prefer children help message, fall back to rendered
+    // Move fields via std::mem::take to avoid cloning
+    let rendered = diag.rendered.take();
+    let help = std::mem::take(&mut diag.children)
+        .into_iter()
+        .find(|c| c.level == DiagnosticLevel::Help)
+        .map(|c| c.message)
+        .or(rendered);
+
+    Some(Diagnostic {
+        file_path,
+        rule,
+        category,
+        severity,
+        message: std::mem::take(&mut diag.message),
+        help,
+        line,
+        column,
+        fix: None,
+    })
+}
+
+/// Build a fallback compiler-error diagnostic from stderr when the build
+/// failed but no JSON error diagnostics were produced.
+fn build_stderr_fallback(stderr: std::process::ChildStderr) -> Option<Diagnostic> {
+    use std::io::Read;
+
+    const MAX_STDERR_BYTES: u64 = 4 * 1024; // 4 KB
+    let mut stderr_output = String::new();
+    let _ = stderr
+        .take(MAX_STDERR_BYTES)
+        .read_to_string(&mut stderr_output);
+
+    if stderr_output.is_empty() {
+        return None;
+    }
+
+    let first_error = stderr_output
+        .lines()
+        .find(|l| l.starts_with("error"))
+        .unwrap_or("project failed to compile");
+
+    // Truncate to 200 chars to avoid leaking verbose internal details
+    let truncated: String = if first_error.chars().count() > 200 {
+        let mut s: String = first_error.chars().take(200).collect();
+        s.push('…');
+        s
+    } else {
+        first_error.to_string()
+    };
+
+    Some(Diagnostic {
+        file_path: PathBuf::from("Cargo.toml"),
+        rule: "compiler-error".to_string(),
+        category: Category::Correctness,
+        severity: Severity::Error,
+        message: truncated,
+        help: Some("Run `cargo build` to see the full error output".to_string()),
+        line: None,
+        column: None,
+        fix: None,
+    })
+}
+
+/// Remove restriction-group lints originating from test code and
+/// print_stdout/print_stderr lints from binary crates.
+fn filter_test_and_binary_lints(diagnostics: &mut Vec<Diagnostic>, project_root: &Path) {
+    // Drop restriction-group lints from test code
+    diagnostics.retain(|d| {
+        if !is_restriction_lint(&d.rule) {
+            return true;
+        }
+        if is_test_file(&d.file_path) {
+            return false;
+        }
+        // For source files, check if line is in a #[cfg(test)] region
+        if let Some(line) = d.line {
+            let abs_path = if d.file_path.is_absolute() {
+                d.file_path.clone()
+            } else {
+                project_root.join(&d.file_path)
+            };
+            if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                if is_line_in_test_module(&content, line) {
+                    return false;
+                }
+            }
+        }
+        true
+    });
+
+    // Drop print_stdout/print_stderr for binary crates
+    if project_root.join("src/main.rs").exists() {
+        diagnostics.retain(|d| {
+            !matches!(
+                d.rule.as_str(),
+                "clippy::print_stdout" | "clippy::print_stderr"
+            )
+        });
+    }
+}
+
 /// Run cargo clippy and parse JSON output into diagnostics.
 fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let manifest_path = project_root.join("Cargo.toml");
@@ -744,73 +887,12 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         let Ok(message) = message else {
             continue;
         };
-
         match message {
             Message::CompilerMessage(compiler_msg) => {
                 let mut diag = compiler_msg.message;
-
-                // Filter: only process error and warning level messages
-                let clippy_severity = match &diag.level {
-                    DiagnosticLevel::Error | DiagnosticLevel::Ice => Severity::Error,
-                    DiagnosticLevel::Warning => Severity::Warning,
-                    _ => continue,
-                };
-                let is_ice = diag.level == DiagnosticLevel::Ice;
-
-                // Extract code (lint name) — take() avoids cloning
-                let rule = match diag.code.take() {
-                    Some(code) => code.code,
-                    None => {
-                        if clippy_severity == Severity::Error {
-                            if is_ice {
-                                "compiler-ice".to_string()
-                            } else {
-                                "compiler-error".to_string()
-                            }
-                        } else {
-                            continue;
-                        }
-                    }
-                };
-
-                // Extract primary span
-                let primary_span = diag.spans.iter().find(|s| s.is_primary);
-                let (file_path, line, column) = primary_span.map_or_else(
-                    || (PathBuf::from("<unknown>"), None, None),
-                    |span| {
-                        (
-                            PathBuf::from(&span.file_name),
-                            Some(span.line_start as u32),
-                            Some(span.column_start as u32),
-                        )
-                    },
-                );
-
-                // Apply registry: category and severity override
-                let category = map_lint_category(&rule);
-                let severity = resolve_severity(&rule, clippy_severity);
-
-                // Extract help: prefer children help message, fall back to rendered
-                // Move fields instead of cloning
-                let rendered = diag.rendered;
-                let help = diag
-                    .children
-                    .into_iter()
-                    .find(|c| c.level == DiagnosticLevel::Help)
-                    .map(|c| c.message)
-                    .or(rendered);
-
-                diagnostics.push(Diagnostic {
-                    file_path,
-                    rule,
-                    category,
-                    severity,
-                    message: diag.message,
-                    help,
-                    line,
-                    column,
-                    fix: None,
-                });
+                if let Some(diagnostic) = process_compiler_message(&mut diag) {
+                    diagnostics.push(diagnostic);
+                }
             }
             Message::BuildFinished(finished) => {
                 build_succeeded = finished.success;
@@ -837,86 +919,15 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 
     // If the build failed and we got no error diagnostics from JSON,
     // capture stderr as a compiler-error diagnostic
-    if !build_succeeded
-        && !diagnostics.iter().any(|d| d.severity == Severity::Error)
-        && let Some(stderr) = stderr
-    {
-        // Cap stderr read to prevent OOM from pathological compiler output
-        const MAX_STDERR_BYTES: u64 = 4 * 1024; // 4 KB
-        let mut stderr_output = String::new();
-        {
-            use std::io::Read;
-            let _ = stderr
-                .take(MAX_STDERR_BYTES)
-                .read_to_string(&mut stderr_output);
-        }
-        if !stderr_output.is_empty() {
-            let first_error = stderr_output
-                .lines()
-                .find(|l| l.starts_with("error"))
-                .unwrap_or("project failed to compile");
-
-            // Truncate to 200 chars to avoid leaking verbose internal details
-            let truncated: String = if first_error.chars().count() > 200 {
-                let mut s: String = first_error.chars().take(200).collect();
-                s.push('…');
-                s
-            } else {
-                first_error.to_string()
-            };
-
-            diagnostics.push(Diagnostic {
-                file_path: PathBuf::from("Cargo.toml"),
-                rule: "compiler-error".to_string(),
-                category: Category::Correctness,
-                severity: Severity::Error,
-                message: truncated,
-                help: Some("Run `cargo build` to see the full error output".to_string()),
-                line: None,
-                column: None,
-                fix: None,
-            });
-        }
-    }
-
-    // Post-filter: drop restriction-group lints from test code.
-    // This covers both integration test files (tests/*.rs) and #[cfg(test)] modules
-    // in source files. For source files, we check if the diagnostic line is below the
-    // first `#[cfg(test)]` marker in the file.
-    diagnostics.retain(|d| {
-        if !is_restriction_lint(&d.rule) {
-            return true;
-        }
-        if is_test_file(&d.file_path) {
-            return false;
-        }
-        // For source files, check if line is in a #[cfg(test)] region
-        if let Some(line) = d.line {
-            let abs_path = if d.file_path.is_absolute() {
-                d.file_path.clone()
-            } else {
-                project_root.join(&d.file_path)
-            };
-            if let Ok(content) = std::fs::read_to_string(&abs_path) {
-                if is_line_in_test_module(&content, line) {
-                    return false;
-                }
+    if !build_succeeded && !diagnostics.iter().any(|d| d.severity == Severity::Error) {
+        if let Some(stderr) = stderr {
+            if let Some(fallback) = build_stderr_fallback(stderr) {
+                diagnostics.push(fallback);
             }
         }
-        true
-    });
-
-    // Post-filter: drop print_stdout/print_stderr for binary crates.
-    // These lints target library code; CLI binaries legitimately use println!/eprintln!.
-    let is_binary_crate = project_root.join("src/main.rs").exists();
-    if is_binary_crate {
-        diagnostics.retain(|d| {
-            !matches!(
-                d.rule.as_str(),
-                "clippy::print_stdout" | "clippy::print_stderr"
-            )
-        });
     }
+
+    filter_test_and_binary_lints(&mut diagnostics, project_root);
 
     Ok(diagnostics)
 }

@@ -366,37 +366,37 @@ fn colorize_by_score(text: &str, score: u32) -> String {
 }
 
 /// A grouped diagnostic: a rule with its occurrence count and representative info.
-struct DiagGroup {
-    rule: String,
+struct DiagGroup<'a> {
+    rule: &'a str,
     severity: Severity,
-    message: String,
-    help: Option<String>,
+    message: &'a str,
+    help: Option<&'a str>,
     count: usize,
-    occurrences: Vec<DiagOccurrence>,
+    occurrences: Vec<DiagOccurrence<'a>>,
 }
 
-struct DiagOccurrence {
-    file_path: String,
+struct DiagOccurrence<'a> {
+    file_path: std::borrow::Cow<'a, str>,
     line: Option<u32>,
     column: Option<u32>,
 }
 
 /// Print diagnostics grouped by rule, errors first.
 fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
-    // Group by rule
-    let mut groups: HashMap<String, DiagGroup> = HashMap::new();
+    // Group by rule — borrow from diagnostics to avoid cloning strings
+    let mut groups: HashMap<&str, DiagGroup<'_>> = HashMap::new();
     for d in diagnostics {
-        let entry = groups.entry(d.rule.clone()).or_insert_with(|| DiagGroup {
-            rule: d.rule.clone(),
+        let entry = groups.entry(&d.rule).or_insert_with(|| DiagGroup {
+            rule: &d.rule,
             severity: d.severity,
-            message: d.message.clone(),
-            help: d.help.clone(),
+            message: &d.message,
+            help: d.help.as_deref(),
             count: 0,
             occurrences: vec![],
         });
         entry.count += 1;
         entry.occurrences.push(DiagOccurrence {
-            file_path: d.file_path.to_string_lossy().to_string(),
+            file_path: d.file_path.to_string_lossy(),
             line: d.line,
             column: d.column,
         });
@@ -412,7 +412,7 @@ fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
         };
         severity_ord(&a.severity)
             .cmp(&severity_ord(&b.severity))
-            .then(a.rule.cmp(&b.rule))
+            .then(a.rule.cmp(b.rule))
     });
 
     for group in &sorted {
@@ -444,10 +444,10 @@ fn print_diagnostics(diagnostics: &[Diagnostic], verbose: bool) {
 
         if verbose {
             for occ in &group.occurrences {
-                let location = match (occ.line, occ.column) {
-                    (Some(l), Some(c)) => format!("{}:{}:{}", occ.file_path, l, c),
-                    (Some(l), None) => format!("{}:{}", occ.file_path, l),
-                    _ => occ.file_path.clone(),
+                let location: std::borrow::Cow<'_, str> = match (occ.line, occ.column) {
+                    (Some(l), Some(c)) => format!("{}:{}:{}", occ.file_path, l, c).into(),
+                    (Some(l), None) => format!("{}:{}", occ.file_path, l).into(),
+                    _ => std::borrow::Cow::Borrowed(occ.file_path.as_ref()),
                 };
                 eprintln!(
                     "    {}",

@@ -446,18 +446,36 @@ impl rmcp::handler::server::ServerHandler for RustDoctorServer {
 // Public entry point
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
+/// Typed error enum for MCP server failures — replaces `Box<dyn Error>` so
+/// callers can match on specific failure modes.
+#[derive(Debug, thiserror::Error)]
+pub enum McpServerError {
+    #[error("failed to create tokio runtime: {0}")]
+    RuntimeCreation(#[from] std::io::Error),
+
+    #[error("MCP server initialization failed: {0}")]
+    Initialize(#[from] Box<rmcp::service::ServerInitializeError>),
+
+    #[error("MCP server task failed: {0}")]
+    TaskJoin(#[from] tokio::task::JoinError),
+}
+
 /// Run the MCP server over stdio. Called from main when `--mcp` is passed.
 ///
 /// # Errors
 ///
 /// Returns an error if the tokio runtime cannot be created, the MCP transport
 /// fails to initialize, or the server encounters a fatal error.
-pub fn run_mcp_server() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_mcp_server() -> Result<(), McpServerError> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let server = RustDoctorServer::new();
         let transport = rmcp::transport::io::stdio();
-        let service = server.serve(transport).await?;
+        let service = server.serve(transport).await.map_err(Box::new)?;
         service.waiting().await?;
         Ok(())
     })
