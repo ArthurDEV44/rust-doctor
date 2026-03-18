@@ -114,11 +114,7 @@ fn parse_deny_output(output: &str) -> Vec<Diagnostic> {
 
         let (rule, category, severity) = classify_deny_finding(code, severity);
 
-        let help = fields
-            .labels
-            .iter()
-            .filter_map(|label| label.message.clone())
-            .next();
+        let help = fields.labels.iter().find_map(|label| label.message.clone());
 
         diagnostics.push(Diagnostic {
             file_path: PathBuf::from("Cargo.toml"),

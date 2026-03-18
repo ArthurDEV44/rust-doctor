@@ -521,10 +521,10 @@ mod tests {
 
     #[test]
     fn test_parse_config_with_score_fail_below() {
-        let toml_str = r#"
+        let toml_str = r"
             [score]
             fail_below = 80
-        "#;
+        ";
         let config: FileConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(config.score.fail_below, Some(80));
     }

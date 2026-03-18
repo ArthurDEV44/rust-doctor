@@ -197,10 +197,8 @@ fn build_passes(
         // Fall back to cargo-audit for advisory-only checks when cargo-deny
         // is not installed.
         let deny_pass = deny::DenyPass { offline };
-        if deny::is_cargo_deny_available() {
-            passes.push(Box::new(deny_pass));
-        } else {
-            passes.push(Box::new(deny_pass)); // still push to emit the Skipped diagnostic
+        passes.push(Box::new(deny_pass));
+        if !deny::is_cargo_deny_available() {
             passes.push(Box::new(audit::AuditPass { offline }));
         }
         passes.push(Box::new(machete::MachetePass));

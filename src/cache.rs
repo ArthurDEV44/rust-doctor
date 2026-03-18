@@ -170,7 +170,7 @@ mod tests {
 
         let mut cache = ScanCache::new(config_hash.clone());
         let diag = sample_diagnostic("src/main.rs", "unwrap-in-production");
-        cache.update(Path::new("src/main.rs"), "fn main() {}", vec![diag.clone()]);
+        cache.update(Path::new("src/main.rs"), "fn main() {}", vec![diag]);
 
         cache.save(dir.path());
 

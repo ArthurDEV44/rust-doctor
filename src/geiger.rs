@@ -67,7 +67,7 @@ fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         ));
     }
 
-    parse_geiger_ascii(&output.stdout)
+    Ok(parse_geiger_ascii(&output.stdout))
 }
 
 /// Parse cargo-geiger ASCII output.
@@ -77,7 +77,7 @@ fn run_geiger(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
 ///
 /// The columns are: Functions, Expressions, Impls, Traits, Methods.
 /// Format per column: `unsafe_used/total`. The `!` means unsafe detected.
-fn parse_geiger_ascii(output: &str) -> Result<Vec<Diagnostic>, String> {
+fn parse_geiger_ascii(output: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for line in output.lines() {
@@ -118,8 +118,11 @@ fn parse_geiger_ascii(output: &str) -> Result<Vec<Diagnostic>, String> {
         }
 
         // Parse first column (functions) and second (expressions) as unsafe/total
-        let unsafe_fns = parse_unsafe_count(columns[0]);
-        let unsafe_exprs = parse_unsafe_count(columns[1]);
+        let (Some(col_fns), Some(col_exprs)) = (columns.get(0), columns.get(1)) else {
+            continue;
+        };
+        let unsafe_fns = parse_unsafe_count(col_fns);
+        let unsafe_exprs = parse_unsafe_count(col_exprs);
         let total_unsafe = unsafe_fns + unsafe_exprs;
 
         if total_unsafe == 0 {
@@ -149,7 +152,7 @@ fn parse_geiger_ascii(output: &str) -> Result<Vec<Diagnostic>, String> {
         });
     }
 
-    Ok(diagnostics)
+    diagnostics
 }
 
 /// Parse "N/M" format, returning N (the unsafe count).
@@ -166,7 +169,7 @@ mod tests {
 
     #[test]
     fn test_parse_empty_output() {
-        let diags = parse_geiger_ascii("").unwrap();
+        let diags = parse_geiger_ascii("");
         assert!(diags.is_empty());
     }
 
@@ -174,7 +177,7 @@ mod tests {
     fn test_parse_ascii_with_unsafe_dependency() {
         let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
                        3/10       20/100       0/0    0/0     0/0      !  └── some-crate 1.0.0\n";
-        let diags = parse_geiger_ascii(output).unwrap();
+        let diags = parse_geiger_ascii(output);
         assert_eq!(diags.len(), 1);
         assert!(diags[0].message.contains("some-crate 1.0.0"));
         assert!(diags[0].message.contains("3 functions"));
@@ -185,7 +188,7 @@ mod tests {
     fn test_parse_ascii_safe_crate_no_diagnostic() {
         let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
                        0/50       0/200        0/0    0/0     0/0      :) └── safe-crate 0.1.0\n";
-        let diags = parse_geiger_ascii(output).unwrap();
+        let diags = parse_geiger_ascii(output);
         assert!(diags.is_empty());
     }
 
@@ -193,7 +196,7 @@ mod tests {
     fn test_high_unsafe_count_is_warning() {
         let output = "Functions  Expressions  Impls  Traits  Methods  Dependency\n\
                        30/35      25/30        0/0    0/0     0/0      !  └── risky-crate 2.0.0\n";
-        let diags = parse_geiger_ascii(output).unwrap();
+        let diags = parse_geiger_ascii(output);
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].severity, Severity::Warning);
     }

@@ -18,7 +18,7 @@ const LCOV_SEARCH_PATHS: &[&str] = &[
 ];
 
 impl AnalysisPass for CoveragePass {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "coverage"
     }
 

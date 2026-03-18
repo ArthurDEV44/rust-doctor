@@ -22,7 +22,7 @@ const WEIGHT_DEPENDENCIES: f64 = 1.0;
 // --- Score calculation ---
 
 /// Determine which scoring dimension a category belongs to.
-fn category_dimension(category: &Category) -> Dimension {
+const fn category_dimension(category: &Category) -> Dimension {
     match category {
         Category::Security => Dimension::Security,
         // Async and Framework map to Reliability as they typically involve correctness.

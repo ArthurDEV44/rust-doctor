@@ -132,8 +132,7 @@ fn find_line_comment_start(line: &str) -> Option<usize> {
     let mut prev_backslash = false;
     let bytes = line.as_bytes();
     let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
+    while let Some(&b) = bytes.get(i) {
         if in_string {
             if b == b'\\' && !prev_backslash {
                 prev_backslash = true;
@@ -146,7 +145,7 @@ fn find_line_comment_start(line: &str) -> Option<usize> {
             prev_backslash = false;
         } else if b == b'"' {
             in_string = true;
-        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+        } else if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
             return Some(i);
         }
         i += 1;

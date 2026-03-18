@@ -56,7 +56,9 @@ pub fn generate_plan(result: &ScanResult) -> Vec<RemediationItem> {
         .into_iter()
         .filter(|(rule, _)| *rule != "skipped-pass") // Skip informational pass notices
         .map(|(rule, diags)| {
-            let first = diags[0];
+            let Some(first) = diags.first() else {
+                unreachable!("group_by guarantees non-empty groups");
+            };
             let priority = classify_priority(rule, first.severity, &first.category);
             let files: Vec<String> = diags
                 .iter()
@@ -96,19 +98,13 @@ fn classify_priority(
         Severity::Error => Priority::P0,
         Severity::Warning => match category {
             Category::Security => Priority::P0,
-            Category::Correctness => Priority::P1,
-            Category::ErrorHandling => Priority::P1,
-            Category::Performance => {
-                // Hot-path clones and allocations in loops are P2
-                if rule.contains("loop") || rule == "unnecessary-allocation" {
-                    Priority::P2
-                } else {
-                    Priority::P2
-                }
-            }
-            Category::Architecture => Priority::P2,
-            Category::Cargo | Category::Dependencies => Priority::P1,
-            Category::Async | Category::Framework => Priority::P1,
+            Category::Correctness
+            | Category::ErrorHandling
+            | Category::Cargo
+            | Category::Dependencies
+            | Category::Async
+            | Category::Framework => Priority::P1,
+            Category::Performance | Category::Architecture => Priority::P2,
             Category::Style => Priority::P3,
         },
         Severity::Info => Priority::P3,
@@ -179,11 +175,11 @@ pub fn format_plan_markdown(items: &[RemediationItem], result: &ScanResult) -> S
 
         if item.files.len() <= 5 {
             let _ = writeln!(out, "   **Files:** {}", item.files.join(", "));
-        } else {
+        } else if let Some(first_three) = item.files.get(..3) {
             let _ = writeln!(
                 out,
                 "   **Files:** {} (+{} more)",
-                item.files[..3].join(", "),
+                first_three.join(", "),
                 item.files.len() - 3
             );
         }
@@ -199,8 +195,7 @@ pub fn format_plan_markdown(items: &[RemediationItem], result: &ScanResult) -> S
     let _ = writeln!(out, "---");
     let _ = writeln!(
         out,
-        "**Summary:** {} P0, {} P1, {} P2, {} P3",
-        p0_count, p1_count, p2_count, p3_count
+        "**Summary:** {p0_count} P0, {p1_count} P1, {p2_count} P2, {p3_count} P3"
     );
 
     if p0_count > 0 {

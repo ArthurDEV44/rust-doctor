@@ -48,9 +48,12 @@ pub fn apply_fixes(diagnostics: &[Diagnostic], project_root: &Path) -> usize {
                 continue;
             }
 
-            let line = &new_lines[line_idx];
+            let Some(line) = new_lines.get(line_idx) else {
+                continue;
+            };
             if line.contains(&fix.old_text) {
-                new_lines[line_idx] = line.replacen(&fix.old_text, &fix.new_text, 1);
+                let replaced = line.replacen(&fix.old_text, &fix.new_text, 1);
+                new_lines[line_idx] = replaced;
                 applied_in_file += 1;
             }
         }

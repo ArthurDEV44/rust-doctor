@@ -110,7 +110,7 @@ struct Region {
 // Conversion
 // ---------------------------------------------------------------------------
 
-fn severity_to_sarif_level(severity: Severity) -> &'static str {
+const fn severity_to_sarif_level(severity: Severity) -> &'static str {
     match severity {
         Severity::Error => "error",
         Severity::Warning => "warning",
@@ -150,11 +150,10 @@ fn diagnostic_to_result(d: &Diagnostic) -> Result_ {
         rule_id: d.rule.clone(),
         level: severity_to_sarif_level(d.severity),
         message: Message {
-            text: if let Some(ref help) = d.help {
-                format!("{} — {help}", d.message)
-            } else {
-                d.message.clone()
-            },
+            text: d.help.as_ref().map_or_else(
+                || d.message.clone(),
+                |help| format!("{} — {help}", d.message),
+            ),
         },
         locations: vec![Location {
             physical_location: PhysicalLocation {
