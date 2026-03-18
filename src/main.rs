@@ -162,7 +162,7 @@ fn check_score_gate(scan_result: &ScanResult, threshold: Option<u32>) -> Option<
 }
 
 /// Returns `true` if any diagnostic exceeds the `--fail-on` severity level.
-fn check_fail_on_gate(scan_result: &ScanResult, fail_on: FailOn) -> bool {
+const fn check_fail_on_gate(scan_result: &ScanResult, fail_on: FailOn) -> bool {
     match fail_on {
         FailOn::Error => scan_result.error_count > 0,
         FailOn::Warning => scan_result.error_count > 0 || scan_result.warning_count > 0,
