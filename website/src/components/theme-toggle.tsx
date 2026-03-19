@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { SunIcon, MoonIcon, MonitorIcon } from "lucide-react";
 
 const THEMES = [
@@ -10,11 +10,11 @@ const THEMES = [
   { value: "system", icon: MonitorIcon, label: "System" },
 ] as const;
 
-export function ThemeToggle() {
-  const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
+const emptySubscribe = () => () => {};
 
-  useEffect(() => setMounted(true), []);
+export function ThemeToggle() {
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
+  const { theme, setTheme } = useTheme();
 
   if (!mounted) {
     return <div className="h-8 w-[6.5rem] rounded-full bg-muted" />;
