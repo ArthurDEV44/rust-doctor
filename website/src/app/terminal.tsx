@@ -358,7 +358,7 @@ export function Terminal() {
 
         <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
           <CopyCommand command="npx -y rust-doctor@latest ." />
-          <Button variant="default" render={<a href="https://github.com/ArthurDEV44/rust-doctor" />}>
+          <Button variant="default" render={<a href="https://github.com/ArthurDEV44/rust-doctor" target="_blank" rel="noopener noreferrer" />}>
             <GithubIcon />
             <span className="hidden sm:inline">Star on GitHub</span>
             <span className="sm:hidden">GitHub</span>

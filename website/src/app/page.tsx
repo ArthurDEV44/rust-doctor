@@ -67,6 +67,54 @@ const faqJsonLd = {
   })),
 };
 
+const howToJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  name: "How to scan a Rust project for code health issues",
+  description:
+    "Install and run rust-doctor to get a 0-100 health score for any Rust project. Detects security, performance, correctness, architecture, and dependency issues.",
+  totalTime: "PT2M",
+  step: [
+    {
+      "@type": "HowToStep",
+      position: 1,
+      name: "Run rust-doctor via npx",
+      text: "Open a terminal at your Rust project root and run: npx -y rust-doctor@latest . — No Rust toolchain required, the npm package bundles the binary.",
+    },
+    {
+      "@type": "HowToStep",
+      position: 2,
+      name: "Review the health score",
+      text: "rust-doctor outputs a 0-100 health score with diagnostic details. Scores 75-100 are Great, 50-74 Need work, and 0-49 are Critical.",
+    },
+    {
+      "@type": "HowToStep",
+      position: 3,
+      name: "Add as MCP server (optional)",
+      text: "For AI-assisted fixes, add rust-doctor as an MCP server: claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp",
+    },
+    {
+      "@type": "HowToStep",
+      position: 4,
+      name: "Add to CI/CD (optional)",
+      text: "Add the GitHub Action to your workflow: uses: ArthurDEV44/rust-doctor@v1 with fail-on: warning to block PRs with code health issues.",
+    },
+  ],
+};
+
+const breadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    {
+      "@type": "ListItem",
+      position: 1,
+      name: "Home",
+      item: "https://rust-doctor.dev",
+    },
+  ],
+};
+
 export default function Home() {
   return (
     <>
@@ -74,6 +122,18 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(howToJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(breadcrumbJsonLd).replace(/</g, "\\u003c"),
         }}
       />
 
@@ -172,6 +232,8 @@ export default function Home() {
             rust-doctor includes a built-in{" "}
             <a
               href="https://modelcontextprotocol.io"
+              target="_blank"
+              rel="noopener noreferrer"
               className="underline hover:text-foreground transition-colors"
             >
               Model Context Protocol
@@ -333,18 +395,24 @@ export default function Home() {
             <div className="flex gap-4">
               <a
                 href="https://github.com/ArthurDEV44/rust-doctor"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="hover:text-foreground transition-colors"
               >
                 GitHub
               </a>
               <a
                 href="https://crates.io/crates/rust-doctor"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="hover:text-foreground transition-colors"
               >
                 crates.io
               </a>
               <a
                 href="https://www.npmjs.com/package/rust-doctor"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="hover:text-foreground transition-colors"
               >
                 npm
@@ -356,6 +424,8 @@ export default function Home() {
               Developed by{" "}
               <a
                 href="https://arthurjean.com/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-foreground/70 hover:text-foreground transition-colors"
               >
                 Arthur Jean
@@ -363,6 +433,8 @@ export default function Home() {
               {" "}at{" "}
               <a
                 href="https://strivex.fr/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-foreground/70 hover:text-foreground transition-colors"
               >
                 StriveX
