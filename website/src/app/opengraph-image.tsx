@@ -61,7 +61,7 @@ export default async function Image() {
             marginTop: "40px",
           }}
         >
-          {["700+ lints", "18 AST rules", "CVE detection", "MCP server"].map(
+          {["700+ lints", "19 AST rules", "CVE detection", "MCP server"].map(
             (tag) => (
               <span
                 key={tag}

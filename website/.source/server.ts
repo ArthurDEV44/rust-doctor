@@ -1,10 +1,12 @@
 // @ts-nocheck
-import * as __fd_glob_15 from "../content/docs/rules/security.mdx?collection=docs"
-import * as __fd_glob_14 from "../content/docs/rules/performance.mdx?collection=docs"
-import * as __fd_glob_13 from "../content/docs/rules/index.mdx?collection=docs"
-import * as __fd_glob_12 from "../content/docs/rules/framework.mdx?collection=docs"
-import * as __fd_glob_11 from "../content/docs/rules/error-handling.mdx?collection=docs"
-import * as __fd_glob_10 from "../content/docs/rules/async.mdx?collection=docs"
+import * as __fd_glob_17 from "../content/docs/rules/security.mdx?collection=docs"
+import * as __fd_glob_16 from "../content/docs/rules/performance.mdx?collection=docs"
+import * as __fd_glob_15 from "../content/docs/rules/index.mdx?collection=docs"
+import * as __fd_glob_14 from "../content/docs/rules/framework.mdx?collection=docs"
+import * as __fd_glob_13 from "../content/docs/rules/error-handling.mdx?collection=docs"
+import * as __fd_glob_12 from "../content/docs/rules/async.mdx?collection=docs"
+import * as __fd_glob_11 from "../content/docs/rules/architecture.mdx?collection=docs"
+import * as __fd_glob_10 from "../content/docs/skill.mdx?collection=docs"
 import * as __fd_glob_9 from "../content/docs/mcp-server.mdx?collection=docs"
 import * as __fd_glob_8 from "../content/docs/installation.mdx?collection=docs"
 import * as __fd_glob_7 from "../content/docs/index.mdx?collection=docs"
@@ -25,4 +27,4 @@ const create = server<typeof Config, import("fumadocs-mdx/runtime/types").Intern
 
 export const blog = await create.doc("blog", "content/blog", {"hello-rust-doctor.mdx": __fd_glob_0, "what-rust-doctor-catches-that-clippy-misses.mdx": __fd_glob_1, });
 
-export const docs = await create.docs("docs", "content/docs", {"meta.json": __fd_glob_2, "rules/meta.json": __fd_glob_3, }, {"ci-cd.mdx": __fd_glob_4, "cli-reference.mdx": __fd_glob_5, "configuration.mdx": __fd_glob_6, "index.mdx": __fd_glob_7, "installation.mdx": __fd_glob_8, "mcp-server.mdx": __fd_glob_9, "rules/async.mdx": __fd_glob_10, "rules/error-handling.mdx": __fd_glob_11, "rules/framework.mdx": __fd_glob_12, "rules/index.mdx": __fd_glob_13, "rules/performance.mdx": __fd_glob_14, "rules/security.mdx": __fd_glob_15, });
+export const docs = await create.docs("docs", "content/docs", {"meta.json": __fd_glob_2, "rules/meta.json": __fd_glob_3, }, {"ci-cd.mdx": __fd_glob_4, "cli-reference.mdx": __fd_glob_5, "configuration.mdx": __fd_glob_6, "index.mdx": __fd_glob_7, "installation.mdx": __fd_glob_8, "mcp-server.mdx": __fd_glob_9, "skill.mdx": __fd_glob_10, "rules/architecture.mdx": __fd_glob_11, "rules/async.mdx": __fd_glob_12, "rules/error-handling.mdx": __fd_glob_13, "rules/framework.mdx": __fd_glob_14, "rules/index.mdx": __fd_glob_15, "rules/performance.mdx": __fd_glob_16, "rules/security.mdx": __fd_glob_17, });

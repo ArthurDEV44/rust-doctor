@@ -2,7 +2,7 @@ export const FAQ_ITEMS = [
   {
     question: "Does Rust need static analysis if the compiler already catches so much?",
     answer:
-      "Yes. The Rust compiler catches memory safety and type errors, but it cannot detect logic issues like hardcoded secrets, performance anti-patterns (excessive cloning, blocking in async), architectural problems, or dependency vulnerabilities. rust-doctor fills this gap with 700+ clippy lints, 18 custom AST rules, CVE detection via cargo-audit, and unused dependency detection via cargo-machete.",
+      "Yes. The Rust compiler catches memory safety and type errors, but it cannot detect logic issues like hardcoded secrets, performance anti-patterns (excessive cloning, blocking in async), architectural problems, or dependency vulnerabilities. rust-doctor fills this gap with 700+ clippy lints, 19 custom AST rules, CVE detection via cargo-audit, and unused dependency detection via cargo-machete.",
   },
   {
     question: "How do I measure Rust code quality?",
@@ -17,7 +17,7 @@ export const FAQ_ITEMS = [
   {
     question: "How does rust-doctor compare to Clippy?",
     answer:
-      "rust-doctor runs Clippy internally (700+ lints with severity overrides) and adds 18 custom AST rules that Clippy doesn't cover: hardcoded secret detection, blocking-in-async detection, framework-specific rules for tokio/axum/actix-web, and architectural anti-patterns. It also integrates cargo-audit for CVE scanning and cargo-machete for unused dependency detection, all producing a single health score.",
+      "rust-doctor runs Clippy internally (700+ lints with severity overrides) and adds 19 custom AST rules that Clippy doesn't cover: hardcoded secret detection, blocking-in-async detection, framework-specific rules for tokio/axum/actix-web, and architectural anti-patterns. It also integrates cargo-audit for CVE scanning and cargo-machete for unused dependency detection, all producing a single health score.",
   },
   {
     question: "Can I use rust-doctor with AI coding assistants?",
@@ -37,7 +37,7 @@ export const FAQ_ITEMS = [
   {
     question: "What issues does rust-doctor catch that other tools miss?",
     answer:
-      "rust-doctor detects hardcoded secrets in connection strings, blocking I/O inside async functions, panic!() in library crates, excessive .clone() in hot loops, and framework-specific anti-patterns for tokio/axum/actix-web. These are logic and architecture issues that the Rust compiler, Clippy, and cargo-audit each miss individually. rust-doctor combines all three plus 18 custom AST rules into one scan.",
+      "rust-doctor detects hardcoded secrets in connection strings, blocking I/O inside async functions, panic!() in library crates, excessive .clone() in hot loops, and framework-specific anti-patterns for tokio/axum/actix-web. These are logic and architecture issues that the Rust compiler, Clippy, and cargo-audit each miss individually. rust-doctor combines all three plus 19 custom AST rules into one scan.",
   },
 ];
 
@@ -47,19 +47,20 @@ export const AST_RULES = [
   ["Error Handling", "box-dyn-error-in-public-api", "Warning"],
   ["Error Handling", "result-unit-error", "Warning"],
   ["Performance", "excessive-clone", "Warning"],
-  ["Performance", "string-from-literal", "Warning"],
+  ["Performance", "string-from-literal", "Info"],
   ["Performance", "collect-then-iterate", "Warning"],
   ["Performance", "large-enum-variant", "Warning"],
   ["Performance", "unnecessary-allocation", "Warning"],
+  ["Architecture", "high-cyclomatic-complexity", "Warning"],
   ["Security", "hardcoded-secrets", "Error"],
   ["Security", "unsafe-block-audit", "Warning"],
   ["Security", "sql-injection-risk", "Error"],
-  ["Async", "blocking-in-async", "Warning"],
+  ["Async", "blocking-in-async", "Error"],
   ["Async", "block-on-in-async", "Error"],
   ["Framework", "tokio-main-missing", "Error"],
-  ["Framework", "tokio-spawn-without-move", "Warning"],
+  ["Framework", "tokio-spawn-without-move", "Error"],
   ["Framework", "axum-handler-not-async", "Warning"],
-  ["Framework", "actix-blocking-handler", "Error"],
+  ["Framework", "actix-blocking-handler", "Warning"],
 ] as const;
 
 export const faqJsonLd = {

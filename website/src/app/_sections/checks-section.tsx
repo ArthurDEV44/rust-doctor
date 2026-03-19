@@ -8,10 +8,10 @@ const CHECKS = [
   },
   {
     label: "AST",
-    stat: "18",
+    stat: "19",
     title: "Custom rules",
     description:
-      "Error handling, performance, security, async, and framework anti-patterns via syn.",
+      "Error handling, performance, architecture, security, async, and framework anti-patterns via syn.",
   },
   {
     label: "DEPS",

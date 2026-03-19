@@ -17,7 +17,7 @@ https://github.com/user-attachments/assets/6766a5d8-9a47-4eb8-892e-76c1a23eb122
 ## Features
 
 - **700+ clippy lints** with severity overrides and category mapping
-- **18 custom AST rules** via syn: error handling, performance, security, async, framework anti-patterns
+- **19 custom AST rules** via syn: error handling, performance, security, async, architecture, framework anti-patterns
 - **Async anti-pattern detection**: blocking calls in async, block_on in async context
 - **Framework-specific rules**: tokio, axum, actix-web
 - **Dependency auditing**: CVE detection via cargo-audit, unused deps via cargo-machete
@@ -26,7 +26,8 @@ https://github.com/user-attachments/assets/6766a5d8-9a47-4eb8-892e-76c1a23eb122
 - **Diff mode**: scan only changed files for fast CI feedback
 - **Workspace support**: scan all crates or select specific members
 - **Inline suppression**: `// rust-doctor-disable-next-line <rule>`
-- **Multiple output modes**: terminal, `--json`, `--score`
+- **Multiple output modes**: terminal, `--json`, `--score`, `--sarif`
+- **Claude Code skill**: `/rust-doctor` slash command — no MCP setup needed
 - **Library crate**: use rust-doctor programmatically via `lib.rs`
 - **NO_COLOR support**: respects the NO_COLOR environment variable
 
@@ -212,6 +213,34 @@ rust-doctor uses stdio transport. Any MCP client that supports stdio can connect
 
 Built with [rmcp](https://crates.io/crates/rmcp) v1.x (official Rust MCP SDK).
 
+## Claude Code Skill (no MCP required)
+
+If you prefer slash commands over MCP servers, rust-doctor ships a Claude Code skill.
+
+**Install via npx:**
+
+```bash
+npx skills add https://github.com/ArthurDEV44/rust-doctor --skill rust-doctor
+```
+
+**Or copy manually:**
+
+```bash
+cp -r skills/rust-doctor/ ~/.claude/skills/rust-doctor/
+```
+
+**Usage:**
+
+```
+/rust-doctor                    # scan current project
+/rust-doctor --diff             # scan changed files only
+/rust-doctor --fix              # scan + apply fixes
+/rust-doctor --plan             # scan + remediation plan
+/rust-doctor src/               # scan a specific directory
+```
+
+The skill runs the `rust-doctor` CLI under the hood, parses the output, categorizes findings by priority, and provides actionable fix guidance with before/after code.
+
 ## GitHub Actions
 
 ```yaml
@@ -250,7 +279,7 @@ let x = risky_call(); // rust-doctor-disable-line
 
 ## Rules
 
-### Custom AST Rules (18 rules)
+### Custom AST Rules (19 rules)
 
 | Category | Rule | Severity |
 |----------|------|----------|
@@ -259,19 +288,20 @@ let x = risky_call(); // rust-doctor-disable-line
 | Error Handling | `box-dyn-error-in-public-api` | Warning |
 | Error Handling | `result-unit-error` | Warning |
 | Performance | `excessive-clone` | Warning |
-| Performance | `string-from-literal` | Warning |
+| Performance | `string-from-literal` | Info |
 | Performance | `collect-then-iterate` | Warning |
 | Performance | `large-enum-variant` | Warning |
 | Performance | `unnecessary-allocation` | Warning |
+| Architecture | `high-cyclomatic-complexity` | Warning |
 | Security | `hardcoded-secrets` | Error |
 | Security | `unsafe-block-audit` | Warning |
 | Security | `sql-injection-risk` | Error |
-| Async | `blocking-in-async` | Warning |
+| Async | `blocking-in-async` | Error |
 | Async | `block-on-in-async` | Error |
 | Framework | `tokio-main-missing` | Error |
-| Framework | `tokio-spawn-without-move` | Warning |
+| Framework | `tokio-spawn-without-move` | Error |
 | Framework | `axum-handler-not-async` | Warning |
-| Framework | `actix-blocking-handler` | Error |
+| Framework | `actix-blocking-handler` | Warning |
 
 ### Clippy Lints (55+ with overrides)
 

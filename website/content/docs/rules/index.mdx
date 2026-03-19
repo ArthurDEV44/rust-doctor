@@ -1,11 +1,11 @@
 ---
 title: Rules Overview
-description: All 18 custom AST rules organized by category, plus 700+ clippy lints.
+description: All 19 custom AST rules organized by category, plus 700+ clippy lints.
 ---
 
 ## Custom AST rules
 
-rust-doctor includes 18 custom rules that analyze the AST via `syn`. These detect issues that clippy and the Rust compiler cannot catch.
+rust-doctor includes 19 custom rules that analyze the AST via `syn`. These detect issues that clippy and the Rust compiler cannot catch.
 
 | Category | Rule | Severity |
 |---|---|---|
@@ -14,19 +14,20 @@ rust-doctor includes 18 custom rules that analyze the AST via `syn`. These detec
 | Error Handling | `box-dyn-error-in-public-api` | Warning |
 | Error Handling | `result-unit-error` | Warning |
 | Performance | `excessive-clone` | Warning |
-| Performance | `string-from-literal` | Warning |
+| Performance | `string-from-literal` | Info |
 | Performance | `collect-then-iterate` | Warning |
 | Performance | `large-enum-variant` | Warning |
 | Performance | `unnecessary-allocation` | Warning |
+| Architecture | `high-cyclomatic-complexity` | Warning |
 | Security | `hardcoded-secrets` | Error |
 | Security | `unsafe-block-audit` | Warning |
 | Security | `sql-injection-risk` | Error |
-| Async | `blocking-in-async` | Warning |
+| Async | `blocking-in-async` | Error |
 | Async | `block-on-in-async` | Error |
 | Framework | `tokio-main-missing` | Error |
-| Framework | `tokio-spawn-without-move` | Warning |
+| Framework | `tokio-spawn-without-move` | Error |
 | Framework | `axum-handler-not-async` | Warning |
-| Framework | `actix-blocking-handler` | Error |
+| Framework | `actix-blocking-handler` | Warning |
 
 ## Clippy lints
 

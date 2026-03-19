@@ -145,7 +145,7 @@ Takes 5-30 seconds depending on project size. \
 Returns JSON with: diagnostics array (each has rule, severity, message, file_path, line, column, help), \
 score (0-100), score_label, source_file_count, elapsed_secs, error_count, warning_count, info_count, skipped_passes. \
 Severity levels: error (bugs/security), warning (code smells), info (suggestions). \
-Runs 4 passes in parallel: clippy (55+ lints), 18 custom AST rules, cargo-audit (CVEs), cargo-machete (unused deps). \
+Runs 4 passes in parallel: clippy (55+ lints), 19 custom AST rules, cargo-audit (CVEs), cargo-machete (unused deps). \
 Set 'diff' to a branch name to only scan changed files. \
 After scanning, use explain_rule on any rule ID to get fix guidance.",
         annotations(read_only_hint = true)
@@ -313,7 +313,7 @@ For unknown rules, returns guidance to use list_rules.",
         description = "List all available rust-doctor rules as formatted markdown. \
 Use this to discover which checks exist before scanning, or to find a rule ID for explain_rule. \
 Instant response — no project scanning required. \
-Returns: 18 custom AST rules (grouped by Error Handling, Performance, Security, Async, Framework), \
+Returns: 19 custom AST rules (grouped by Error Handling, Performance, Architecture, Security, Async, Framework), \
 55+ clippy lints with custom severity overrides, and 2 external tools (cargo-audit, cargo-machete). \
 Each entry shows rule ID, severity, and one-line summary.",
         annotations(read_only_hint = true)

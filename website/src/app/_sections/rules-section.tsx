@@ -7,7 +7,7 @@ export function RulesSection() {
         Rules
       </p>
       <h2 className="text-2xl sm:text-3xl font-semibold tracking-[-0.03em] text-foreground mb-10">
-        18 custom AST rules.
+        19 custom AST rules.
       </h2>
 
       {/* Mobile: stacked rows */}
@@ -23,7 +23,11 @@ export function RulesSection() {
             </div>
             <span
               className={`text-xs shrink-0 ${
-                sev === "Error" ? "text-red-500" : "text-yellow-500"
+                sev === "Error"
+                  ? "text-red-500"
+                  : sev === "Warning"
+                    ? "text-yellow-500"
+                    : "text-blue-500"
               }`}
             >
               {sev}
@@ -52,7 +56,11 @@ export function RulesSection() {
                 <td className="py-3">
                   <span
                     className={
-                      sev === "Error" ? "text-red-500" : "text-yellow-500"
+                      sev === "Error"
+                        ? "text-red-500"
+                        : sev === "Warning"
+                          ? "text-yellow-500"
+                          : "text-blue-500"
                     }
                   >
                     {sev}

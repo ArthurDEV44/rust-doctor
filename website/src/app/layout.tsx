@@ -103,12 +103,13 @@ const softwareJsonLd = {
   url: "https://rust-doctor.dev",
   downloadUrl: "https://crates.io/crates/rust-doctor",
   installUrl: "https://www.npmjs.com/package/rust-doctor",
-  softwareVersion: process.env.NEXT_PUBLIC_VERSION || "0.1.3",
+  softwareVersion: process.env.NEXT_PUBLIC_VERSION || "0.1.7",
   description:
     "Scan Rust projects for security, performance, correctness, architecture, and dependency issues. Get a 0-100 health score with actionable diagnostics.",
   featureList: [
     "700+ clippy lints with severity overrides",
-    "18 custom AST rules via syn",
+    "19 custom AST rules via syn",
+    "Claude Code skill — /rust-doctor slash command",
     "CVE detection via cargo-audit",
     "Unused dependency detection via cargo-machete",
     "Framework-specific rules for tokio, axum, actix-web",

@@ -9,6 +9,11 @@ const INSTALL_METHODS = [
       "claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp",
   },
   {
+    label: "Skill",
+    command:
+      "npx skills add https://github.com/ArthurDEV44/rust-doctor --skill rust-doctor",
+  },
+  {
     label: "GitHub Actions",
     command: `- uses: ArthurDEV44/rust-doctor@v1\n  with:\n    token: \${{ secrets.GITHUB_TOKEN }}\n    fail-on: warning`,
   },
