@@ -17,7 +17,7 @@ export function CopyBlock({
     <div>
       <p className="text-sm text-neutral-600 mb-1">{label}</p>
       <div className="relative group">
-        <pre className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 pr-10 text-sm text-neutral-300 overflow-x-auto font-mono">
+        <pre className="bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 sm:p-3 pr-9 sm:pr-10 text-xs sm:text-sm text-neutral-300 overflow-x-auto font-mono">
           <code>{command}</code>
         </pre>
         <Button

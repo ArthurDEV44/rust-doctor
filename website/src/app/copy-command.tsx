@@ -10,14 +10,14 @@ export function CopyCommand({ command }: { command: string }) {
   return (
     <Button
       variant="outline"
-      className="justify-start gap-2 font-mono text-sm w-full sm:w-auto"
+      className="justify-start gap-2 font-mono text-xs sm:text-sm w-full sm:w-auto min-w-0"
       onClick={() => copyToClipboard(command)}
     >
-      <code className="truncate">{command}</code>
+      <code className="truncate min-w-0">{command}</code>
       {isCopied ? (
-        <CheckIcon className="size-3.5 text-success" />
+        <CheckIcon className="size-3.5 shrink-0 text-success" />
       ) : (
-        <CopyIcon className="size-3.5" />
+        <CopyIcon className="size-3.5 shrink-0" />
       )}
     </Button>
   );

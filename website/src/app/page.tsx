@@ -77,16 +77,16 @@ export default function Home() {
       />
 
       {/* Hero — animated terminal demo (full viewport) */}
-      <div className="min-h-screen bg-[#0d0d0d] flex justify-center p-4 md:p-8 pt-12 md:pt-20">
+      <div className="min-h-[100svh] bg-[#0d0d0d] flex justify-center items-start p-3 sm:p-4 md:p-8 pt-8 sm:pt-12 md:pt-20">
         <Terminal />
       </div>
 
       {/* Server-rendered SEO content */}
-      <main className="max-w-3xl mx-auto px-6 py-16 md:py-24 font-mono text-[14px] md:text-[15px]">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-4 font-sans text-neutral-100">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24 font-mono text-[14px] md:text-[15px] min-w-0 w-full overflow-hidden">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 font-sans text-neutral-100">
           rust-doctor: Rust code health scanner
         </h1>
-        <p className="text-base text-neutral-500 mb-12 max-w-2xl">
+        <p className="text-sm sm:text-base text-neutral-500 mb-8 sm:mb-12 max-w-2xl leading-relaxed">
           A unified code health tool for Rust. Scans for security, performance,
           correctness, architecture, and dependency issues, then outputs a
           0&ndash;100 health score with actionable diagnostics.
@@ -94,7 +94,7 @@ export default function Home() {
 
         {/* What it checks */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
             What does rust-doctor check?
           </h2>
           <ul className="space-y-2 text-neutral-500">
@@ -131,7 +131,7 @@ export default function Home() {
 
         {/* Health score */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
             How is the health score calculated?
           </h2>
           <p className="text-neutral-500 mb-4">
@@ -140,7 +140,7 @@ export default function Home() {
             counts unique rules violated, not total occurrences. Fixing all
             instances of one issue removes the entire penalty.
           </p>
-          <div className="grid grid-cols-3 gap-4 text-center text-sm">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center text-xs sm:text-sm">
             <Card>
               <CardContent className="p-3">
                 <Badge variant="success" size="lg">75&ndash;100</Badge>
@@ -164,7 +164,7 @@ export default function Home() {
 
         {/* MCP Server */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
             MCP server for AI coding assistants
           </h2>
           <p className="text-neutral-500 mb-4">
@@ -179,7 +179,7 @@ export default function Home() {
             suggest fixes directly. Works with Claude Code, Cursor, VS Code, and
             any MCP-compatible tool.
           </p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <Card>
               <CardContent className="p-3">
                 <Kbd>scan</Kbd>
@@ -209,7 +209,7 @@ export default function Home() {
 
         {/* Installation */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 font-sans text-neutral-100">Installation</h2>
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">Installation</h2>
           <div className="space-y-3 text-sm">
             <CopyBlock label="npm / npx (no Rust toolchain required)" command="npx -y rust-doctor@latest ." />
             <CopyBlock label="cargo install" command="cargo install rust-doctor" />
@@ -220,10 +220,46 @@ export default function Home() {
 
         {/* Custom rules */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
             18 custom AST rules
           </h2>
-          <div className="overflow-x-auto">
+
+          {/* Mobile: card layout */}
+          <div className="space-y-2 sm:hidden">
+            {[
+              ["Error Handling", "unwrap-in-production", "Warning"],
+              ["Error Handling", "panic-in-library", "Error"],
+              ["Error Handling", "box-dyn-error-in-public-api", "Warning"],
+              ["Error Handling", "result-unit-error", "Warning"],
+              ["Performance", "excessive-clone", "Warning"],
+              ["Performance", "string-from-literal", "Warning"],
+              ["Performance", "collect-then-iterate", "Warning"],
+              ["Performance", "large-enum-variant", "Warning"],
+              ["Performance", "unnecessary-allocation", "Warning"],
+              ["Security", "hardcoded-secrets", "Error"],
+              ["Security", "unsafe-block-audit", "Warning"],
+              ["Security", "sql-injection-risk", "Error"],
+              ["Async", "blocking-in-async", "Warning"],
+              ["Async", "block-on-in-async", "Error"],
+              ["Framework", "tokio-main-missing", "Error"],
+              ["Framework", "tokio-spawn-without-move", "Warning"],
+              ["Framework", "axum-handler-not-async", "Warning"],
+              ["Framework", "actix-blocking-handler", "Error"],
+            ].map(([cat, rule, sev]) => (
+              <div key={rule} className="flex items-center justify-between gap-2 border border-neutral-800/50 rounded-lg p-3">
+                <div className="min-w-0">
+                  <span className="text-neutral-600 text-xs">{cat}</span>
+                  <div className="truncate"><Kbd>{rule}</Kbd></div>
+                </div>
+                <Badge variant={sev === "Error" ? "error" : "warning"} size="sm" className="shrink-0">
+                  {sev}
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table layout */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="border-b border-neutral-800 text-neutral-600">
@@ -272,7 +308,7 @@ export default function Home() {
 
         {/* FAQ */}
         <section className="mb-12">
-          <h2 className="text-xl font-semibold mb-6 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-6 font-sans text-neutral-100">
             Frequently asked questions
           </h2>
           <Accordion>

@@ -221,7 +221,7 @@ export function Terminal() {
   const barFilled = Math.round(scenario.score / 5);
 
   return (
-    <div className="w-full max-w-2xl font-mono text-[14px] md:text-[15px] leading-relaxed">
+    <div className="w-full max-w-2xl font-mono text-[12px] sm:text-[14px] md:text-[15px] leading-relaxed">
       {/* Scenario indicator */}
       <div className="flex gap-2 mb-6">
         {SCENARIOS.map((s, i) => (
@@ -243,7 +243,7 @@ export function Terminal() {
       </div>
 
       {/* Terminal output */}
-      <div className="space-y-1 min-h-[420px]">
+      <div className="space-y-1 min-h-[320px] sm:min-h-[420px]">
         {/* Command */}
         <p className="text-neutral-500">
           ${" "}
@@ -268,7 +268,7 @@ export function Terminal() {
         {/* Diagnostics */}
         {visibleDiags > 0 && <div className="h-2" />}
         {scenario.diagnostics.slice(0, visibleDiags).map((diag, i) => (
-          <p key={`${scenarioIndex}-${i}`} className="text-neutral-400">
+          <p key={`${scenarioIndex}-${i}`} className="text-neutral-400 break-words">
             <span className="text-neutral-600 select-none">{"> "}</span>
             <span
               className={
@@ -277,7 +277,9 @@ export function Terminal() {
             >
               {diag.severity === "error" ? "x" : "!"}
             </span>{" "}
-            {diag.message}{" "}
+            <span className="hidden sm:inline">{diag.message}</span>
+            <span className="sm:hidden">{diag.message.length > 50 ? diag.message.slice(0, 50) + "…" : diag.message}</span>
+            {" "}
             <span className="text-neutral-600">({diag.count})</span>
           </p>
         ))}
@@ -290,7 +292,7 @@ export function Terminal() {
               alt={`Ferris the crab - ${scenario.label}`}
               width={112}
               height={112}
-              className="object-contain"
+              className="object-contain w-16 h-16 sm:w-28 sm:h-28"
             />
           </div>
         )}
@@ -350,7 +352,7 @@ export function Terminal() {
 
       {/* CTA area — always visible */}
       <div className="mt-8 pt-6 border-t border-neutral-800/50 space-y-4">
-        <p className="text-neutral-600 text-sm">
+        <p className="text-neutral-600 text-xs sm:text-sm">
           Run it on your codebase to find issues like these:
         </p>
 
@@ -358,7 +360,8 @@ export function Terminal() {
           <CopyCommand command="npx -y rust-doctor@latest ." />
           <Button variant="default" render={<a href="https://github.com/ArthurDEV44/rust-doctor" />}>
             <GithubIcon />
-            Star on GitHub
+            <span className="hidden sm:inline">Star on GitHub</span>
+            <span className="sm:hidden">GitHub</span>
           </Button>
         </div>
 
@@ -366,7 +369,9 @@ export function Terminal() {
           <p className="text-neutral-600 text-xs mb-1">
             Add as MCP server in Claude Code:
           </p>
-          <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />
+          <div className="overflow-x-auto">
+            <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />
+          </div>
         </div>
 
         <Button variant="ghost" size="xs" onClick={restart}>
