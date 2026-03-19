@@ -6,12 +6,7 @@ rust-doctor scans Rust projects for security, performance, correctness, architec
 
 ### See it in action →
 
-<details open>
-<summary>demo.mp4</summary>
-
-<video src="https://github.com/ArthurDEV44/rust-doctor/raw/master/assets/demo.mp4" width="100%" autoplay muted loop></video>
-
-</details>
+https://github.com/user-attachments/assets/6766a5d8-9a47-4eb8-892e-76c1a23eb122
 
 ## Features
 
