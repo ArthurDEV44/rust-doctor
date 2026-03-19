@@ -369,9 +369,7 @@ export function Terminal() {
           <p className="text-neutral-600 text-xs mb-1">
             Add as MCP server in Claude Code:
           </p>
-          <div className="overflow-x-auto">
-            <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />
-          </div>
+          <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />
         </div>
 
         <Button variant="ghost" size="xs" onClick={restart}>
