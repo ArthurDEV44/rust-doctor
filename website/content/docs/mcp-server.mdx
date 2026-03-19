@@ -1,0 +1,53 @@
+---
+title: MCP Server
+description: Use rust-doctor as an MCP server with Claude Code, Cursor, VS Code, and other AI tools.
+---
+
+## What is MCP?
+
+MCP (Model Context Protocol) is a standard for connecting AI assistants to external tools. rust-doctor includes a built-in MCP server that lets AI assistants scan your code, explain rules, and suggest fixes.
+
+## Setup
+
+### Claude Code
+
+```bash
+claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp
+```
+
+### Cursor / VS Code
+
+Add to your MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "rust-doctor": {
+      "command": "npx",
+      "args": ["-y", "rust-doctor", "--mcp"]
+    }
+  }
+}
+```
+
+## Available tools
+
+The MCP server exposes 4 read-only tools:
+
+| Tool | Description |
+|---|---|
+| `scan` | Scan a project directory — returns diagnostics + score |
+| `score` | Quick pass/fail — returns only the health score |
+| `explain_rule` | Explain any rule by name with examples and fix guidance |
+| `list_rules` | List all available checks with categories and severities |
+
+## Security
+
+The MCP server applies these security constraints:
+
+- **Read-only** — never modifies source files
+- **Path restriction** — scanned directory must be under `$HOME`
+- **Timeout** — 5-minute maximum per scan
+- **Offline mode** — network-dependent checks are disabled by default
+- **No project config** — ignores `rust-doctor.toml` to prevent config injection from untrusted projects
+- **Path sanitization** — absolute paths are stripped from error messages

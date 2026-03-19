@@ -1,38 +1,70 @@
+const CHECKS = [
+  {
+    label: "LINTS",
+    stat: "700+",
+    title: "Clippy lints",
+    description:
+      "Severity overrides across pedantic, nursery, and cargo groups.",
+  },
+  {
+    label: "AST",
+    stat: "18",
+    title: "Custom rules",
+    description:
+      "Error handling, performance, security, async, and framework anti-patterns via syn.",
+  },
+  {
+    label: "DEPS",
+    stat: "5",
+    title: "Cargo tools",
+    description:
+      "cargo-audit, cargo-deny, cargo-geiger, cargo-machete, cargo-semver-checks.",
+  },
+  {
+    label: "FRAMEWORKS",
+    stat: "3",
+    title: "Runtime targets",
+    description:
+      "tokio, axum, actix-web — blocking in async, missing handlers, spawn without move.",
+  },
+] as const;
+
 export function ChecksSection() {
   return (
-    <section className="mb-12">
-      <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
-        What does rust-doctor check?
+    <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-24">
+      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground mb-3">
+        What it checks
+      </p>
+      <h2 className="text-2xl sm:text-3xl font-semibold tracking-[-0.03em] text-foreground mb-10">
+        Everything clippy doesn&apos;t.
       </h2>
-      <ul className="space-y-2 text-muted-foreground">
-        <li>
-          <strong className="text-foreground">700+ clippy lints</strong>{" "}
-          with severity overrides across pedantic, nursery, and cargo groups
-        </li>
-        <li>
-          <strong className="text-foreground">18 custom AST rules</strong>{" "}
-          via syn: error handling, performance, security, async, and
-          framework anti-patterns
-        </li>
-        <li>
-          <strong className="text-foreground">Dependency auditing</strong> —
-          CVE scanning (cargo-audit), supply-chain checks (cargo-deny), unused
-          deps (cargo-machete), unsafe code budget (cargo-geiger), semver
-          violations (cargo-semver-checks)
-        </li>
-        <li>
-          <strong className="text-foreground">
-            Framework-specific rules
-          </strong>{" "}
-          for tokio, axum, and actix-web: missing async handlers, blocking
-          in async, spawn without move
-        </li>
-      </ul>
-      <p className="mt-3 text-xs text-muted-foreground">
-        External tools are optional — missing ones are skipped gracefully.
-        Run{" "}
-        <code className="text-foreground">rust-doctor --install-deps</code>{" "}
-        to install them all at once.
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {CHECKS.map((check) => (
+          <div
+            key={check.label}
+            className="border border-border/50 rounded-md p-5"
+          >
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground/60 mb-3">
+              {check.label}
+            </p>
+            <p className="text-3xl font-bold text-foreground leading-none mb-1">
+              {check.stat}
+            </p>
+            <p className="text-sm text-foreground font-medium">
+              {check.title}
+            </p>
+            <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+              {check.description}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-6 text-xs text-muted-foreground">
+        External tools are optional — missing ones are skipped gracefully. Run{" "}
+        <code className="text-foreground">rust-doctor --install-deps</code> to
+        install them all at once.
       </p>
     </section>
   );

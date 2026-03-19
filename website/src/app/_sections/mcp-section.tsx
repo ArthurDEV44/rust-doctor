@@ -1,51 +1,59 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { Kbd } from "@/components/ui/kbd";
+const MCP_TOOLS = [
+  {
+    name: "scan",
+    description: "Full diagnostics + health score",
+  },
+  {
+    name: "score",
+    description: "Quick 0–100 pass/fail",
+  },
+  {
+    name: "explain_rule",
+    description: "Rule docs + fix guidance",
+  },
+  {
+    name: "list_rules",
+    description: "Browse all available checks",
+  },
+] as const;
 
 export function McpSection() {
   return (
-    <section className="mb-12">
-      <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
-        MCP server for AI coding assistants
+    <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-24 border-t border-border/30">
+      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground mb-3">
+        MCP Server
+      </p>
+      <h2 className="text-2xl sm:text-3xl font-semibold tracking-[-0.03em] text-foreground mb-4">
+        Built for AI coding assistants.
       </h2>
-      <p className="text-muted-foreground mb-4">
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mb-10">
         rust-doctor includes a built-in{" "}
         <a
           href="https://modelcontextprotocol.io"
           target="_blank"
           rel="noopener noreferrer"
-          className="underline hover:text-foreground transition-colors"
+          className="text-foreground underline underline-offset-4 decoration-border hover:decoration-foreground transition-colors"
         >
           Model Context Protocol
         </a>{" "}
-        server. AI coding assistants can scan projects, explain rules, and
-        suggest fixes directly. Works with Claude Code, Cursor, VS Code, and
-        any MCP-compatible tool.
+        server. Claude Code, Cursor, VS Code — any MCP-compatible tool can scan
+        your project, explain rules, and suggest fixes.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-        <Card>
-          <CardContent className="p-3">
-            <Kbd>scan</Kbd>
-            <p className="text-muted-foreground mt-1">Full diagnostics + score</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <Kbd>score</Kbd>
-            <p className="text-muted-foreground mt-1">Quick 0&ndash;100 score</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <Kbd>explain_rule</Kbd>
-            <p className="text-muted-foreground mt-1">Rule docs + fix guidance</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <Kbd>list_rules</Kbd>
-            <p className="text-muted-foreground mt-1">All available rules</p>
-          </CardContent>
-        </Card>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {MCP_TOOLS.map((tool) => (
+          <div
+            key={tool.name}
+            className="border border-border/50 rounded-md p-4"
+          >
+            <code className="text-sm text-foreground font-medium">
+              {tool.name}
+            </code>
+            <p className="text-xs text-muted-foreground mt-2">
+              {tool.description}
+            </p>
+          </div>
+        ))}
       </div>
     </section>
   );

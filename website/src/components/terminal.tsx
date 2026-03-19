@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
-import { CopyCommand } from "./copy-command";
-import { Button } from "@/components/ui/button";
-import { GithubIcon, RotateCcwIcon } from "lucide-react";
+import { RotateCcwIcon } from "lucide-react";
 
 interface Diagnostic {
   severity: "error" | "warning";
@@ -109,6 +107,7 @@ export function Terminal() {
   const [visibleDiags, setVisibleDiags] = useState(0);
   const [animatedScore, setAnimatedScore] = useState(0);
   const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const scenario = SCENARIOS[scenarioIndex];
   const command = "npx -y rust-doctor@latest .";
@@ -218,6 +217,12 @@ export function Terminal() {
     };
   }, [phase, nextScenario]);
 
+  // Auto-scroll to bottom like a real terminal
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [phase, visibleDiags, animatedScore]);
+
   const barFilled = Math.round(scenario.score / 5);
 
   return (
@@ -242,8 +247,8 @@ export function Terminal() {
         ))}
       </div>
 
-      {/* Terminal output */}
-      <div className="space-y-1 min-h-[320px] sm:min-h-[420px]">
+      {/* Terminal output — fixed height, auto-scroll to bottom */}
+      <div ref={scrollRef} className="space-y-1 h-[360px] sm:h-[420px] overflow-y-auto scrollbar-hide">
         {/* Command */}
         <p className="text-muted-foreground">
           ${" "}
@@ -350,32 +355,15 @@ export function Terminal() {
         )}
       </div>
 
-      {/* CTA area — always visible */}
-      <div className="mt-8 pt-6 border-t border-border space-y-4">
-        <p className="text-muted-foreground text-xs sm:text-sm">
-          Run it on your codebase to find issues like these:
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-          <CopyCommand command="npx -y rust-doctor@latest ." />
-          <Button variant="default" render={<a href="https://github.com/ArthurDEV44/rust-doctor" target="_blank" rel="noopener noreferrer" />}>
-            <GithubIcon />
-            <span className="hidden sm:inline">Star on GitHub</span>
-            <span className="sm:hidden">GitHub</span>
-          </Button>
-        </div>
-
-        <div className="mt-2">
-          <p className="text-muted-foreground text-xs mb-1">
-            Add as MCP server in Claude Code:
-          </p>
-          <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />
-        </div>
-
-        <Button variant="ghost" size="xs" onClick={restart}>
-          <RotateCcwIcon />
-          Restart demo
-        </Button>
+      {/* Restart */}
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={restart}
+          className="flex items-center gap-1 text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        >
+          <RotateCcwIcon className="size-3" />
+          Restart
+        </button>
       </div>
     </div>
   );

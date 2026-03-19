@@ -1,0 +1,12 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "installation",
+    "cli-reference",
+    "configuration",
+    "mcp-server",
+    "ci-cd",
+    "rules"
+  ]
+}

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Providers } from "./providers";
+import { RootProvider } from "fumadocs-ui/provider/next";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -146,7 +146,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans overflow-x-hidden">
-        <Providers>
+        <RootProvider
+          theme={{
+            attribute: "class",
+            defaultTheme: "dark",
+            enableSystem: true,
+            disableTransitionOnChange: true,
+          }}
+        >
           <script
             type="application/ld+json"
             dangerouslySetInnerHTML={{
@@ -166,7 +173,7 @@ export default function RootLayout({
             }}
           />
           {children}
-        </Providers>
+        </RootProvider>
       </body>
     </html>
   );

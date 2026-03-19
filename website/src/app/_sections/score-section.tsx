@@ -1,37 +1,37 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+const GRADES = [
+  { range: "75–100", label: "Great", color: "text-green-500" },
+  { range: "50–74", label: "Needs work", color: "text-yellow-500" },
+  { range: "0–49", label: "Critical", color: "text-red-500" },
+] as const;
 
 export function ScoreSection() {
   return (
-    <section className="mb-12">
-      <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
-        How is the health score calculated?
-      </h2>
-      <p className="text-muted-foreground mb-4">
-        Score = 100 &minus; (unique error rules &times; 1.5) &minus; (unique
-        warning rules &times; 0.75), clamped to 0&ndash;100. The score
-        counts unique rules violated, not total occurrences. Fixing all
-        instances of one issue removes the entire penalty.
+    <section className="max-w-3xl mx-auto px-4 sm:px-6 py-16 sm:py-24 border-t border-border/30">
+      <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground mb-3">
+        Scoring
       </p>
-      <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center text-xs sm:text-sm">
-        <Card>
-          <CardContent className="p-3">
-            <Badge variant="success" size="lg">75&ndash;100</Badge>
-            <div className="text-muted-foreground mt-1">Great</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <Badge variant="warning" size="lg">50&ndash;74</Badge>
-            <div className="text-muted-foreground mt-1">Needs work</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-3">
-            <Badge variant="error" size="lg">0&ndash;49</Badge>
-            <div className="text-muted-foreground mt-1">Critical</div>
-          </CardContent>
-        </Card>
+      <h2 className="text-2xl sm:text-3xl font-semibold tracking-[-0.03em] text-foreground mb-4">
+        One number. Zero ambiguity.
+      </h2>
+      <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mb-10">
+        Score = 100 &minus; unique error rules &times; 1.5 &minus; unique
+        warning rules &times; 0.75. Counts unique rules violated, not total
+        occurrences. Fix all instances of one issue — the entire penalty
+        disappears.
+      </p>
+
+      <div className="grid grid-cols-3 gap-4">
+        {GRADES.map((grade) => (
+          <div
+            key={grade.label}
+            className="border border-border/50 rounded-md p-4 text-center"
+          >
+            <p className={`text-2xl sm:text-3xl font-bold ${grade.color}`}>
+              {grade.range}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">{grade.label}</p>
+          </div>
+        ))}
       </div>
     </section>
   );

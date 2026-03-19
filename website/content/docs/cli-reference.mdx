@@ -1,0 +1,92 @@
+---
+title: CLI Reference
+description: Complete reference for all rust-doctor command-line options and flags.
+---
+
+## Usage
+
+```bash
+rust-doctor [OPTIONS] [DIRECTORY]
+```
+
+`DIRECTORY` defaults to `.` (current directory).
+
+## Options
+
+### Output modes
+
+| Flag | Description |
+|---|---|
+| `--score` | Print only the bare integer score to stdout (for CI piping) |
+| `--json` | Output full scan results as JSON |
+| `--sarif` | Output results in SARIF 2.1.0 format (for GitHub Code Scanning) |
+| `-v, --verbose` | Show detailed file:line information per diagnostic |
+
+These are mutually exclusive — you can only use one output mode at a time.
+
+### Filtering
+
+| Flag | Description |
+|---|---|
+| `--diff [BASE]` | Scan only changed files vs a base branch. Defaults to `auto` (detects main/master) |
+| `--project NAMES` | Scan only specific workspace members (comma-separated) |
+
+### CI integration
+
+| Flag | Description |
+|---|---|
+| `--fail-on <LEVEL>` | Exit with code 1 when this severity is reached. Values: `error`, `warning` |
+
+### Fixing and planning
+
+| Flag | Description |
+|---|---|
+| `--fix` | Apply machine-applicable fixes from custom rules (modifies source files) |
+| `--plan` | Show a prioritized remediation plan after scanning |
+
+### Configuration
+
+| Flag | Description |
+|---|---|
+| `--offline` | Skip network-dependent checks (cargo-audit advisory DB fetch) |
+| `--no-project-config` | Ignore the project's `rust-doctor.toml` config file |
+| `--install-deps` | Check and install missing external tools |
+
+### MCP server
+
+| Flag | Description |
+|---|---|
+| `--mcp` | Run as an MCP stdio server for AI tool integration |
+
+## Examples
+
+Scan the current directory:
+
+```bash
+rust-doctor .
+```
+
+Get just the score for CI:
+
+```bash
+rust-doctor --score .
+echo $?  # 0 if score > 0
+```
+
+Scan only changed files on a PR:
+
+```bash
+rust-doctor --diff main --fail-on warning .
+```
+
+Output SARIF for GitHub Code Scanning:
+
+```bash
+rust-doctor --sarif . > results.sarif
+```
+
+Scan specific workspace members:
+
+```bash
+rust-doctor --project api,core .
+```
