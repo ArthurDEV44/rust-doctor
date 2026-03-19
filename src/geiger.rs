@@ -19,9 +19,6 @@ impl AnalysisPass for GeigerPass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_geiger_available() {
-            eprintln!(
-                "Info: Install cargo-geiger for unsafe code auditing: cargo install cargo-geiger"
-            );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
                 reason: "cargo-geiger is not installed — unsafe dependency auditing disabled. \

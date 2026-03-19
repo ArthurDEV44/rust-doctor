@@ -586,9 +586,11 @@ impl AnalysisPass for ClippyPass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_clippy_available() {
-            return Err(crate::error::PassError::Failed {
+            return Err(crate::error::PassError::Skipped {
                 pass: "clippy".to_string(),
-                message: "clippy not found — install with: rustup component add clippy".to_string(),
+                reason: "clippy is not installed — lint analysis disabled. \
+                         Install with: rustup component add clippy"
+                    .to_string(),
             });
         }
         run_clippy(project_root).map_err(|message| crate::error::PassError::Failed {

@@ -17,9 +17,6 @@ impl AnalysisPass for MachetePass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_machete_available() {
-            eprintln!(
-                "Info: Install cargo-machete for unused dependency detection: cargo install cargo-machete"
-            );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
                 reason: "cargo-machete is not installed — unused dependency detection disabled. \

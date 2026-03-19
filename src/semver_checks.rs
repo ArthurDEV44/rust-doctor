@@ -17,9 +17,6 @@ impl AnalysisPass for SemVerPass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_semver_checks_available() {
-            eprintln!(
-                "Info: Install cargo-semver-checks for semver violation detection: cargo install cargo-semver-checks"
-            );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
                 reason:

@@ -4,11 +4,22 @@
 use clap::Parser;
 use rust_doctor::cli::{Cli, FailOn};
 use rust_doctor::diagnostics::ScanResult;
-use rust_doctor::{config, discovery, fixer, output, plan, sarif, scan};
+use rust_doctor::{config, deps, discovery, fixer, output, plan, sarif, scan};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    // Install external tools and exit
+    if cli.install_deps {
+        deps::print_status();
+        let all_ok = deps::install_missing_tools();
+        return if all_ok {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
 
     // MCP mode: run as a stdio MCP server for AI tool integration
     if let Some(code) = handle_mcp_flag(&cli) {

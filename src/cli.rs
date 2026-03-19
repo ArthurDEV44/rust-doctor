@@ -45,6 +45,10 @@ pub struct Cli {
     #[arg(long)]
     pub plan: bool,
 
+    /// Check and install missing external tools (cargo-deny, cargo-audit, etc.)
+    #[arg(long)]
+    pub install_deps: bool,
+
     /// Skip network-dependent checks (cargo-audit advisory DB fetch, etc.)
     #[arg(long)]
     pub offline: bool,
@@ -228,6 +232,12 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+    }
+
+    #[test]
+    fn test_install_deps_flag() {
+        let cli = Cli::try_parse_from(["rust-doctor", "--install-deps"]).unwrap();
+        assert!(cli.install_deps);
     }
 
     #[test]

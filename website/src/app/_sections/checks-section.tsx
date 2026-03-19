@@ -15,16 +15,10 @@ export function ChecksSection() {
           framework anti-patterns
         </li>
         <li>
-          <strong className="text-foreground">CVE detection</strong> via
-          cargo-audit, scanning dependencies against the RustSec Advisory
-          Database
-        </li>
-        <li>
-          <strong className="text-foreground">
-            Unused dependency detection
-          </strong>{" "}
-          via cargo-machete. Finds deps in Cargo.toml that your code never
-          imports
+          <strong className="text-foreground">Dependency auditing</strong> —
+          CVE scanning (cargo-audit), supply-chain checks (cargo-deny), unused
+          deps (cargo-machete), unsafe code budget (cargo-geiger), semver
+          violations (cargo-semver-checks)
         </li>
         <li>
           <strong className="text-foreground">
@@ -34,6 +28,12 @@ export function ChecksSection() {
           in async, spawn without move
         </li>
       </ul>
+      <p className="mt-3 text-xs text-muted-foreground">
+        External tools are optional — missing ones are skipped gracefully.
+        Run{" "}
+        <code className="text-foreground">rust-doctor --install-deps</code>{" "}
+        to install them all at once.
+      </p>
     </section>
   );
 }

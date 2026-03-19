@@ -20,7 +20,6 @@ impl AnalysisPass for DenyPass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_cargo_deny_available() {
-            eprintln!("Info: Install cargo-deny for supply-chain checks: cargo install cargo-deny");
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
                 reason: "cargo-deny is not installed — supply-chain checking disabled. \

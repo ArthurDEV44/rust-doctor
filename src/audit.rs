@@ -20,9 +20,6 @@ impl AnalysisPass for AuditPass {
 
     fn run(&self, project_root: &Path) -> Result<Vec<Diagnostic>, crate::error::PassError> {
         if !is_cargo_audit_available() {
-            eprintln!(
-                "Info: Install cargo-audit for vulnerability scanning: cargo install cargo-audit"
-            );
             return Err(crate::error::PassError::Skipped {
                 pass: self.name().to_string(),
                 reason: "cargo-audit is not installed — CVE scanning disabled. \

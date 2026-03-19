@@ -74,6 +74,8 @@
 pub mod cli;
 /// Configuration loading, merging, and validation.
 pub mod config;
+/// External tool dependency checking and installation.
+pub mod deps;
 /// Core diagnostic types: `Diagnostic`, `Severity`, `Category`, `ScanResult`.
 pub mod diagnostics;
 /// Project discovery via `cargo metadata` and framework detection.

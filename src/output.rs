@@ -205,19 +205,27 @@ fn print_score_box(result: &ScanResult) {
         result.source_file_count,
         result.elapsed.as_secs_f64(),
     );
+    let skipped_text = if result.skipped_passes.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "⊘ {} pass(es) skipped — run: rust-doctor --install-deps",
+            result.skipped_passes.len()
+        ))
+    };
 
     // Calculate box width from content display widths
-    let max_width = [
-        7, // face lines "│ X X │"
+    let mut widths = vec![
+        7_usize, // face lines "│ X X │"
         score_text.width(),
         bar.plain.width(),
         dim_text.width(),
         stats.width(),
-    ]
-    .into_iter()
-    .max()
-    .unwrap_or(40)
-    .max(40);
+    ];
+    if let Some(ref text) = skipped_text {
+        widths.push(text.width());
+    }
+    let max_width = widths.into_iter().max().unwrap_or(40).max(40);
     let inner_width = max_width + 2; // padding
 
     // Print box
@@ -333,6 +341,18 @@ fn print_score_box(result: &ScanResult) {
         result.elapsed.as_secs_f64(),
     );
     println!("{}", pad_line(&colored_stats, stats.width()));
+
+    // Skipped passes hint
+    if let Some(ref text) = skipped_text {
+        println!("{}", empty_line());
+        let colored_skip = format!(
+            "{} {} pass(es) skipped — run: {}",
+            "⊘".if_supports_color(Stream::Stdout, |t| t.yellow()),
+            result.skipped_passes.len(),
+            "rust-doctor --install-deps".if_supports_color(Stream::Stdout, |t| t.bold()),
+        );
+        println!("{}", pad_line(&colored_skip, text.width()));
+    }
 
     println!("{bottom}");
 }
@@ -467,6 +487,13 @@ pub fn render_score(result: &ScanResult) {
         eprintln!(
             "{}",
             "No Rust source files found".if_supports_color(Stream::Stderr, |t| t.yellow())
+        );
+    }
+    if !result.skipped_passes.is_empty() {
+        eprintln!(
+            "Warning: {} pass(es) skipped (missing tools) — score may be incomplete. \
+             Run: rust-doctor --install-deps",
+            result.skipped_passes.len()
         );
     }
     println!("{}", result.score);

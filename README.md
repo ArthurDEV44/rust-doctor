@@ -1,5 +1,11 @@
 # rust-doctor
 
+[![Crates.io](https://img.shields.io/crates/v/rust-doctor)](https://crates.io/crates/rust-doctor)
+[![npm](https://img.shields.io/npm/v/rust-doctor)](https://www.npmjs.com/package/rust-doctor)
+[![CI](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml)
+[![Crates.io Downloads](https://img.shields.io/crates/d/rust-doctor)](https://crates.io/crates/rust-doctor)
+[![npm Downloads](https://img.shields.io/npm/dm/rust-doctor)](https://www.npmjs.com/package/rust-doctor)
+
 A unified code health tool for Rust — scan, score, and fix your codebase.
 
 rust-doctor scans Rust projects for security, performance, correctness, architecture, and dependency issues, producing a 0–100 health score with actionable diagnostics.
@@ -104,6 +110,9 @@ rust-doctor --project core,api
 
 # Verbose output with file:line details
 rust-doctor --verbose
+
+# Install missing external tools (cargo-deny, cargo-audit, etc.)
+rust-doctor --install-deps
 
 # Run as MCP server
 rust-doctor --mcp
@@ -268,10 +277,18 @@ let x = risky_call(); // rust-doctor-disable-line
 
 rust-doctor runs `cargo clippy` with pedantic, nursery, and cargo lint groups. 55+ lints have explicit category and severity overrides across: Error Handling, Performance, Security, Correctness, Architecture, Cargo, Async, Style.
 
-### External Tools
+### External Tools (optional, auto-detected)
 
-- **cargo-audit** — Vulnerability scanning for dependencies
-- **cargo-machete** — Unused dependency detection
+These tools are optional — rust-doctor gracefully skips any that are missing and shows which passes were skipped. Run `rust-doctor --install-deps` to install them all at once.
+
+| Tool | Install | What it does |
+|------|---------|-------------|
+| clippy | `rustup component add clippy` | 700+ lint checks |
+| cargo-deny | `cargo install cargo-deny` | Supply-chain checking (advisories, licenses, bans) |
+| cargo-audit | `cargo install cargo-audit` | CVE vulnerability scanning |
+| cargo-geiger | `cargo install cargo-geiger` | Unsafe code auditing across dependency tree |
+| cargo-machete | `cargo install cargo-machete` | Unused dependency detection |
+| cargo-semver-checks | `cargo install cargo-semver-checks` | Semver violation detection |
 
 ## Library Usage
 
