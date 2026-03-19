@@ -46,8 +46,8 @@ const SCENARIOS: Scenario[] = [
     duration: "3.2s",
     face: "┌─────┐\n│ x x │\n│  ▽  │\n└─────┘",
     image: "/images/rusty-sad.png",
-    color: "text-red-400",
-    barColor: "bg-red-400",
+    color: "text-red-600 dark:text-red-400",
+    barColor: "bg-red-600 dark:bg-red-400",
   },
   {
     diagnostics: [
@@ -65,8 +65,8 @@ const SCENARIOS: Scenario[] = [
     duration: "1.8s",
     face: "┌─────┐\n│ • • │\n│  ─  │\n└─────┘",
     image: "/images/rusty-perplex.png",
-    color: "text-yellow-400",
-    barColor: "bg-yellow-400",
+    color: "text-yellow-600 dark:text-yellow-400",
+    barColor: "bg-yellow-600 dark:bg-yellow-400",
   },
   {
     diagnostics: [
@@ -81,8 +81,8 @@ const SCENARIOS: Scenario[] = [
     duration: "2.4s",
     face: "┌─────┐\n│ ◠ ◠ │\n│  ▽  │\n└─────┘",
     image: "/images/rusty-happy.png",
-    color: "text-green-400",
-    barColor: "bg-green-400",
+    color: "text-green-600 dark:text-green-400",
+    barColor: "bg-green-600 dark:bg-green-400",
   },
 ];
 
@@ -230,13 +230,13 @@ export function Terminal() {
             className={`h-1 flex-1 rounded-full transition-all duration-500 ${
               i === scenarioIndex
                 ? i === 0
-                  ? "bg-red-400"
+                  ? "bg-red-600 dark:bg-red-400"
                   : i === 1
-                  ? "bg-yellow-400"
-                  : "bg-green-400"
+                  ? "bg-yellow-600 dark:bg-yellow-400"
+                  : "bg-green-600 dark:bg-green-400"
                 : i < scenarioIndex
-                ? "bg-neutral-700"
-                : "bg-neutral-800"
+                ? "bg-neutral-300 dark:bg-neutral-700"
+                : "bg-neutral-200 dark:bg-neutral-800"
             }`}
           />
         ))}
@@ -245,21 +245,21 @@ export function Terminal() {
       {/* Terminal output */}
       <div className="space-y-1 min-h-[320px] sm:min-h-[420px]">
         {/* Command */}
-        <p className="text-neutral-500">
+        <p className="text-muted-foreground">
           ${" "}
           {command.slice(0, typedChars)}
           {phase === "typing" && (
-            <span className="inline-block w-2 h-4 bg-neutral-400 align-middle animate-pulse ml-0.5" />
+            <span className="inline-block w-2 h-4 bg-foreground/40 align-middle animate-pulse ml-0.5" />
           )}
         </p>
 
         {/* Header */}
         {phase !== "typing" && (
           <>
-            <p className="text-neutral-500 mt-4">
-              <span className="text-orange-400">&#9764;</span> rust-doctor
+            <p className="text-muted-foreground mt-4">
+              <span className="text-orange-600 dark:text-orange-400">&#9764;</span> rust-doctor
             </p>
-            <p className="text-neutral-600">
+            <p className="text-muted-foreground/70">
               Scan, score, and fix your Rust codebase.
             </p>
           </>
@@ -268,11 +268,11 @@ export function Terminal() {
         {/* Diagnostics */}
         {visibleDiags > 0 && <div className="h-2" />}
         {scenario.diagnostics.slice(0, visibleDiags).map((diag, i) => (
-          <p key={`${scenarioIndex}-${i}`} className="text-neutral-400 break-words">
-            <span className="text-neutral-600 select-none">{"> "}</span>
+          <p key={`${scenarioIndex}-${i}`} className="text-foreground/70 break-words">
+            <span className="text-muted-foreground select-none">{"> "}</span>
             <span
               className={
-                diag.severity === "error" ? "text-red-400" : "text-yellow-400"
+                diag.severity === "error" ? "text-red-600 dark:text-red-400" : "text-yellow-600 dark:text-yellow-400"
               }
             >
               {diag.severity === "error" ? "x" : "!"}
@@ -280,7 +280,7 @@ export function Terminal() {
             <span className="hidden sm:inline">{diag.message}</span>
             <span className="sm:hidden">{diag.message.length > 50 ? diag.message.slice(0, 50) + "…" : diag.message}</span>
             {" "}
-            <span className="text-neutral-600">({diag.count})</span>
+            <span className="text-muted-foreground">({diag.count})</span>
           </p>
         ))}
 
@@ -303,7 +303,7 @@ export function Terminal() {
             <span className={`${scenario.color} font-bold`}>
               {animatedScore}
             </span>
-            <span className="text-neutral-500"> / 100 </span>
+            <span className="text-muted-foreground"> / 100 </span>
             <span className={scenario.color}>{scenario.label}</span>
           </p>
         )}
@@ -315,7 +315,7 @@ export function Terminal() {
               <div
                 key={i}
                 className={`h-2 flex-1 rounded-sm transition-all duration-300 ${
-                  i < barFilled ? scenario.barColor : "bg-neutral-800"
+                  i < barFilled ? scenario.barColor : "bg-neutral-200 dark:bg-neutral-800"
                 }`}
                 style={{
                   transitionDelay: `${i * 25}ms`,
@@ -327,14 +327,14 @@ export function Terminal() {
 
         {/* Summary */}
         {showSummary && (
-          <p className="mt-3 text-neutral-500">
+          <p className="mt-3 text-muted-foreground">
             {scenario.errors > 0 && (
               <>
-                <span className="text-red-400">{scenario.errors} errors</span>
+                <span className="text-red-600 dark:text-red-400">{scenario.errors} errors</span>
                 {", "}
               </>
             )}
-            <span className="text-yellow-400">
+            <span className="text-yellow-600 dark:text-yellow-400">
               {scenario.warnings} warnings
             </span>
             {" across "}
@@ -344,15 +344,15 @@ export function Terminal() {
 
         {/* Auto-advance hint */}
         {phase === "pause" && (
-          <p className="mt-4 text-neutral-700 text-xs animate-pulse">
+          <p className="mt-4 text-muted-foreground/50 text-xs animate-pulse">
             Next scan...
           </p>
         )}
       </div>
 
       {/* CTA area — always visible */}
-      <div className="mt-8 pt-6 border-t border-neutral-800/50 space-y-4">
-        <p className="text-neutral-600 text-xs sm:text-sm">
+      <div className="mt-8 pt-6 border-t border-border space-y-4">
+        <p className="text-muted-foreground text-xs sm:text-sm">
           Run it on your codebase to find issues like these:
         </p>
 
@@ -366,7 +366,7 @@ export function Terminal() {
         </div>
 
         <div className="mt-2">
-          <p className="text-neutral-600 text-xs mb-1">
+          <p className="text-muted-foreground text-xs mb-1">
             Add as MCP server in Claude Code:
           </p>
           <CopyCommand command="claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp" />

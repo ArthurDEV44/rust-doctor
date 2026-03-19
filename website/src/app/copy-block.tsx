@@ -15,15 +15,15 @@ export function CopyBlock({
 
   return (
     <div>
-      <p className="text-sm text-neutral-600 mb-1">{label}</p>
+      <p className="text-sm text-muted-foreground mb-1">{label}</p>
       <div className="relative group">
-        <pre className="bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 sm:p-3 pr-9 sm:pr-10 text-xs sm:text-sm text-neutral-300 overflow-x-auto scrollbar-hide font-mono">
+        <pre className="bg-neutral-900 dark:bg-neutral-900 border border-neutral-800 dark:border-neutral-800 rounded-lg p-2.5 sm:p-3 pr-9 sm:pr-10 text-xs sm:text-sm text-neutral-300 overflow-x-auto scrollbar-hide font-mono">
           <code>{command}</code>
         </pre>
         <Button
           variant="ghost"
           size="icon-xs"
-          className="absolute top-2.5 right-2.5 text-neutral-600 hover:text-white"
+          className="absolute top-2.5 right-2.5 text-neutral-400 hover:text-white"
           onClick={() => copyToClipboard(command)}
         >
           {isCopied ? (

@@ -1,5 +1,6 @@
 import { Terminal } from "./terminal";
 import { CopyBlock } from "./copy-block";
+import { ThemeToggle } from "./theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Kbd } from "@/components/ui/kbd";
@@ -77,16 +78,16 @@ export default function Home() {
       />
 
       {/* Hero — animated terminal demo (full viewport) */}
-      <div className="min-h-[100svh] bg-[#0d0d0d] flex justify-center items-start p-3 sm:p-4 md:p-8 pt-8 sm:pt-12 md:pt-20">
+      <div className="min-h-[100svh] bg-background flex justify-center items-start p-3 sm:p-4 md:p-8 pt-8 sm:pt-12 md:pt-20">
         <Terminal />
       </div>
 
       {/* Server-rendered SEO content */}
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24 font-mono text-[14px] md:text-[15px] min-w-0 w-full overflow-hidden">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 font-sans text-neutral-100">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mb-4 font-sans text-foreground">
           rust-doctor: Rust code health scanner
         </h1>
-        <p className="text-sm sm:text-base text-neutral-500 mb-8 sm:mb-12 max-w-2xl leading-relaxed">
+        <p className="text-sm sm:text-base text-muted-foreground mb-8 sm:mb-12 max-w-2xl leading-relaxed">
           A unified code health tool for Rust. Scans for security, performance,
           correctness, architecture, and dependency issues, then outputs a
           0&ndash;100 health score with actionable diagnostics.
@@ -94,33 +95,33 @@ export default function Home() {
 
         {/* What it checks */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
             What does rust-doctor check?
           </h2>
-          <ul className="space-y-2 text-neutral-500">
+          <ul className="space-y-2 text-muted-foreground">
             <li>
-              <strong className="text-neutral-300">700+ clippy lints</strong>{" "}
+              <strong className="text-foreground">700+ clippy lints</strong>{" "}
               with severity overrides across pedantic, nursery, and cargo groups
             </li>
             <li>
-              <strong className="text-neutral-300">18 custom AST rules</strong>{" "}
+              <strong className="text-foreground">18 custom AST rules</strong>{" "}
               via syn: error handling, performance, security, async, and
               framework anti-patterns
             </li>
             <li>
-              <strong className="text-neutral-300">CVE detection</strong> via
+              <strong className="text-foreground">CVE detection</strong> via
               cargo-audit, scanning dependencies against the RustSec Advisory
               Database
             </li>
             <li>
-              <strong className="text-neutral-300">
+              <strong className="text-foreground">
                 Unused dependency detection
               </strong>{" "}
               via cargo-machete. Finds deps in Cargo.toml that your code never
               imports
             </li>
             <li>
-              <strong className="text-neutral-300">
+              <strong className="text-foreground">
                 Framework-specific rules
               </strong>{" "}
               for tokio, axum, and actix-web: missing async handlers, blocking
@@ -131,10 +132,10 @@ export default function Home() {
 
         {/* Health score */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
             How is the health score calculated?
           </h2>
-          <p className="text-neutral-500 mb-4">
+          <p className="text-muted-foreground mb-4">
             Score = 100 &minus; (unique error rules &times; 1.5) &minus; (unique
             warning rules &times; 0.75), clamped to 0&ndash;100. The score
             counts unique rules violated, not total occurrences. Fixing all
@@ -144,19 +145,19 @@ export default function Home() {
             <Card>
               <CardContent className="p-3">
                 <Badge variant="success" size="lg">75&ndash;100</Badge>
-                <div className="text-neutral-600 mt-1">Great</div>
+                <div className="text-muted-foreground mt-1">Great</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3">
                 <Badge variant="warning" size="lg">50&ndash;74</Badge>
-                <div className="text-neutral-600 mt-1">Needs work</div>
+                <div className="text-muted-foreground mt-1">Needs work</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3">
                 <Badge variant="error" size="lg">0&ndash;49</Badge>
-                <div className="text-neutral-600 mt-1">Critical</div>
+                <div className="text-muted-foreground mt-1">Critical</div>
               </CardContent>
             </Card>
           </div>
@@ -164,14 +165,14 @@ export default function Home() {
 
         {/* MCP Server */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
             MCP server for AI coding assistants
           </h2>
-          <p className="text-neutral-500 mb-4">
+          <p className="text-muted-foreground mb-4">
             rust-doctor includes a built-in{" "}
             <a
               href="https://modelcontextprotocol.io"
-              className="underline hover:text-white transition-colors"
+              className="underline hover:text-foreground transition-colors"
             >
               Model Context Protocol
             </a>{" "}
@@ -183,25 +184,25 @@ export default function Home() {
             <Card>
               <CardContent className="p-3">
                 <Kbd>scan</Kbd>
-                <p className="text-neutral-600 mt-1">Full diagnostics + score</p>
+                <p className="text-muted-foreground mt-1">Full diagnostics + score</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3">
                 <Kbd>score</Kbd>
-                <p className="text-neutral-600 mt-1">Quick 0&ndash;100 score</p>
+                <p className="text-muted-foreground mt-1">Quick 0&ndash;100 score</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3">
                 <Kbd>explain_rule</Kbd>
-                <p className="text-neutral-600 mt-1">Rule docs + fix guidance</p>
+                <p className="text-muted-foreground mt-1">Rule docs + fix guidance</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-3">
                 <Kbd>list_rules</Kbd>
-                <p className="text-neutral-600 mt-1">All available rules</p>
+                <p className="text-muted-foreground mt-1">All available rules</p>
               </CardContent>
             </Card>
           </div>
@@ -209,7 +210,7 @@ export default function Home() {
 
         {/* Installation */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">Installation</h2>
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">Installation</h2>
           <div className="space-y-3 text-sm">
             <CopyBlock label="npm / npx (no Rust toolchain required)" command="npx -y rust-doctor@latest ." />
             <CopyBlock label="cargo install" command="cargo install rust-doctor" />
@@ -220,7 +221,7 @@ export default function Home() {
 
         {/* Custom rules */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-4 font-sans text-foreground">
             18 custom AST rules
           </h2>
 
@@ -246,9 +247,9 @@ export default function Home() {
               ["Framework", "axum-handler-not-async", "Warning"],
               ["Framework", "actix-blocking-handler", "Error"],
             ].map(([cat, rule, sev]) => (
-              <div key={rule} className="flex items-center justify-between gap-2 border border-neutral-800/50 rounded-lg p-3">
+              <div key={rule} className="flex items-center justify-between gap-2 border border-border rounded-lg p-3">
                 <div className="min-w-0">
-                  <span className="text-neutral-600 text-xs">{cat}</span>
+                  <span className="text-muted-foreground text-xs">{cat}</span>
                   <div className="truncate"><Kbd>{rule}</Kbd></div>
                 </div>
                 <Badge variant={sev === "Error" ? "error" : "warning"} size="sm" className="shrink-0">
@@ -262,13 +263,13 @@ export default function Home() {
           <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
-                <tr className="border-b border-neutral-800 text-neutral-600">
+                <tr className="border-b border-border text-muted-foreground">
                   <th className="py-2 pr-4">Category</th>
                   <th className="py-2 pr-4">Rule</th>
                   <th className="py-2">Severity</th>
                 </tr>
               </thead>
-              <tbody className="text-neutral-500">
+              <tbody className="text-muted-foreground">
                 {[
                   ["Error Handling", "unwrap-in-production", "Warning"],
                   ["Error Handling", "panic-in-library", "Error"],
@@ -289,8 +290,8 @@ export default function Home() {
                   ["Framework", "axum-handler-not-async", "Warning"],
                   ["Framework", "actix-blocking-handler", "Error"],
                 ].map(([cat, rule, sev]) => (
-                  <tr key={rule} className="border-b border-neutral-800/50">
-                    <td className="py-2 pr-4 text-neutral-600">{cat}</td>
+                  <tr key={rule} className="border-b border-border">
+                    <td className="py-2 pr-4 text-muted-foreground">{cat}</td>
                     <td className="py-2 pr-4">
                       <Kbd>{rule}</Kbd>
                     </td>
@@ -308,7 +309,7 @@ export default function Home() {
 
         {/* FAQ */}
         <section className="mb-12">
-          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-6 font-sans text-neutral-100">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-6 font-sans text-foreground">
             Frequently asked questions
           </h2>
           <Accordion>
@@ -316,7 +317,7 @@ export default function Home() {
               <AccordionItem key={item.question} value={item.question}>
                 <AccordionTrigger>{item.question}</AccordionTrigger>
                 <AccordionPanel>
-                  <p className="text-neutral-500 text-sm leading-relaxed">
+                  <p className="text-muted-foreground text-sm leading-relaxed">
                     {item.answer}
                   </p>
                 </AccordionPanel>
@@ -326,46 +327,49 @@ export default function Home() {
         </section>
 
         {/* Footer */}
-        <footer className="border-t border-neutral-800 pt-8 text-sm text-neutral-600 space-y-3">
+        <footer className="border-t border-border pt-8 text-sm text-muted-foreground space-y-3">
           <div className="flex flex-col sm:flex-row justify-between gap-2">
             <span>MIT OR Apache-2.0</span>
             <div className="flex gap-4">
               <a
                 href="https://github.com/ArthurDEV44/rust-doctor"
-                className="hover:text-neutral-400 transition-colors"
+                className="hover:text-foreground transition-colors"
               >
                 GitHub
               </a>
               <a
                 href="https://crates.io/crates/rust-doctor"
-                className="hover:text-neutral-400 transition-colors"
+                className="hover:text-foreground transition-colors"
               >
                 crates.io
               </a>
               <a
                 href="https://www.npmjs.com/package/rust-doctor"
-                className="hover:text-neutral-400 transition-colors"
+                className="hover:text-foreground transition-colors"
               >
                 npm
               </a>
             </div>
           </div>
-          <p>
-            Developed by{" "}
-            <a
-              href="https://arthurjean.com/"
-              className="text-neutral-400 hover:text-white transition-colors"
-            >
-              Arthur Jean
-            </a>
-            {" "}at{" "}
-            <a
-              href="https://strivex.fr/"
-              className="text-neutral-400 hover:text-white transition-colors"
-            >
-              StriveX
-            </a>
-          </p>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <p>
+              Developed by{" "}
+              <a
+                href="https://arthurjean.com/"
+                className="text-foreground/70 hover:text-foreground transition-colors"
+              >
+                Arthur Jean
+              </a>
+              {" "}at{" "}
+              <a
+                href="https://strivex.fr/"
+                className="text-foreground/70 hover:text-foreground transition-colors"
+              >
+                StriveX
+              </a>
+            </p>
+            <ThemeToggle />
+          </div>
         </footer>
       </main>
     </>
