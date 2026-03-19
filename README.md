@@ -4,6 +4,15 @@ A unified code health tool for Rust — scan, score, and fix your codebase.
 
 rust-doctor scans Rust projects for security, performance, correctness, architecture, and dependency issues, producing a 0–100 health score with actionable diagnostics.
 
+### See it in action →
+
+<details open>
+<summary>demo.mp4</summary>
+
+<video src="https://github.com/ArthurDEV44/rust-doctor/raw/master/assets/demo.mp4" width="100%" autoplay muted loop></video>
+
+</details>
+
 ## Features
 
 - **700+ clippy lints** with severity overrides and category mapping
