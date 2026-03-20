@@ -482,13 +482,25 @@ Output: A list of additional findings NOT caught by rust-doctor, with file:line 
 PHASE 4 — BEST PRACTICES RESEARCH (Web search)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Based on the findings from Phases 2 and 3, research current Rust best practices on the web.
+Based on the findings from Phases 2 and 3, research current Rust best practices.
 Focus your searches on the specific issues found — not generic advice.
 
-Search for:
+### Tool selection (adapt to your environment)
+
+**For web research** — use whichever is available, in this priority order:
+1. Exa MCP tools (`web_search_exa`, `get_code_context_exa`) — best quality for code research
+2. Native `WebSearch` / `WebFetch` tools — always available as fallback
+
+**For documentation lookup** — use whichever is available, in this priority order:
+1. Context7 MCP tools (`resolve-library-id` then `query-docs`) — version-accurate, up-to-date docs
+2. Native `WebFetch` on docs.rs / official docs — fallback if Context7 is not available
+
+### What to research
+
 1. **Framework-specific patterns**: If the project uses axum/actix/tonic, search for current
    best practices for that framework (error handling, middleware, extractors, etc.)
-2. **Crate-specific guidance**: For major dependencies, search for recommended usage patterns
+2. **Crate-specific guidance**: For major dependencies, look up their documentation
+   (use Context7 if available, or fetch from docs.rs)
 3. **Anti-pattern remediation**: For each major issue category found, search for the recommended
    Rust community approach (e.g., "Rust async error handling best practices")
 4. **Performance patterns**: If performance issues were found, search for the idiomatic solution
@@ -498,7 +510,7 @@ Key reference sources to check:
 - Effective Rust (effective-rust.com)
 - Rust Design Patterns (rust-unofficial.github.io/patterns)
 - The Rust Performance Book (nnethercote.github.io/perf-book)
-- Tokio documentation (docs.rs/tokio) for async patterns
+- Tokio documentation — use Context7 `query-docs` for tokio if available, else docs.rs/tokio
 
 Output: Curated list of best practices relevant to THIS project's issues, with source URLs.
 
@@ -669,6 +681,8 @@ If the user confirms:
 3. For each item:
    - Read the affected files
    - Apply the fix following the `explain_rule` guidance
+   - If unsure about the idiomatic fix, look up the relevant crate documentation:
+     use Context7 MCP (`resolve-library-id` + `query-docs`) if available, else fetch from docs.rs
    - Verify the fix compiles (`cargo check`)
 4. After all fixes, re-run `scan` to verify the score improved
 5. Commit the changes with a conventional commit message

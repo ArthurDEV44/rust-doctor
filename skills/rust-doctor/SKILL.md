@@ -197,12 +197,20 @@ For each finding, display:
 
 Print: `[Step 4/4] GUIDE`
 
+**Tool selection (adapt to available MCP servers):**
+
+When researching fixes and best practices, use the best tools available:
+- **Documentation**: Use Context7 MCP (`resolve-library-id` + `query-docs`) if available for version-accurate docs. Fallback: fetch from docs.rs with WebFetch.
+- **Web research**: Use Exa MCP (`web_search_exa`, `get_code_context_exa`) if available for high-quality code search. Fallback: native WebSearch/WebFetch.
+- **If neither is available**: use native Claude Code tools (Read, WebSearch, WebFetch).
+
 **4a. For each finding (CRITICAL and HIGH first):**
 
 - Read the flagged file at the specific line using the Read tool
 - Explain WHY it's a problem (not just what was flagged)
 - Show the specific code that triggered the finding
 - Provide a concrete fix with before/after code
+- If unsure about the idiomatic fix, look up the crate docs (Context7 or docs.rs) and search for community patterns (Exa or WebSearch)
 - See [references/rules-reference.md](references/rules-reference.md) for fix strategies per rule
 
 **4b. If `--fix` was requested:**
