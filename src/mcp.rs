@@ -1,4 +1,4 @@
-use crate::diagnostics::{Diagnostic, DimensionScores, ScoreLabel};
+use crate::diagnostics::{Diagnostic, DimensionScores, ScanResult, ScoreLabel};
 use crate::{clippy, config, discovery, rules, scan};
 use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::tool::ToolRouter;
@@ -108,11 +108,53 @@ pub struct HealthCheckArgs {
 // Output schemas (schemars-derived for MCP structured output)
 // ---------------------------------------------------------------------------
 
+/// Maximum number of example locations shown per diagnostic group.
+const MAX_EXAMPLES_PER_GROUP: usize = 3;
+
+/// A single example location for a diagnostic finding.
+#[derive(Serialize, JsonSchema)]
+pub struct DiagnosticExample {
+    /// Source file path (relative to project root).
+    pub file_path: String,
+    /// Line number (1-based).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// Column number (1-based).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
+}
+
+/// Diagnostics grouped by rule — reduces output from thousands of individual
+/// findings to ~70 compact groups that fit in an LLM context window.
+#[derive(Serialize, JsonSchema)]
+pub struct DiagnosticGroup {
+    /// Rule identifier (e.g. "unwrap-in-production", "clippy::expect_used").
+    pub rule: String,
+    /// Severity: "error", "warning", or "info".
+    pub severity: String,
+    /// Category (e.g. "Error Handling", "Security", "Performance").
+    pub category: String,
+    /// Total number of occurrences across the project.
+    pub count: usize,
+    /// Representative diagnostic message.
+    pub message: String,
+    /// Actionable fix guidance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+    /// Example locations (up to 3).
+    pub examples: Vec<DiagnosticExample>,
+}
+
 /// Structured output for the scan tool.
 #[derive(Serialize, JsonSchema)]
 pub struct ScanOutput {
-    /// All diagnostic findings.
-    pub diagnostics: Vec<Diagnostic>,
+    /// Human-readable markdown summary of the scan results.
+    pub summary: String,
+    /// Diagnostics grouped by rule (not individual findings).
+    /// Each group shows the rule, count, and up to 3 example locations.
+    pub diagnostics: Vec<DiagnosticGroup>,
+    /// Total number of individual diagnostic findings before grouping.
+    pub total_diagnostic_count: usize,
     /// Health score from 0 (critical) to 100 (perfect).
     pub score: u32,
     /// Human-readable score label.
@@ -288,8 +330,14 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
             })
             .await;
 
+        let total_diagnostic_count = result.diagnostics.len();
+        let grouped = group_diagnostics(&result.diagnostics);
+        let summary = format_scan_summary(&result, &grouped);
+
         Ok(Json(ScanOutput {
-            diagnostics: result.diagnostics,
+            summary,
+            diagnostics: grouped,
+            total_diagnostic_count,
             score: result.score,
             score_label: result.score_label,
             dimension_scores: result.dimension_scores,
@@ -999,6 +1047,120 @@ fn discover_and_resolve(
 }
 
 // ---------------------------------------------------------------------------
+// Diagnostic grouping (MCP output compression)
+// ---------------------------------------------------------------------------
+
+/// Group individual diagnostics by rule, sorted by severity then count.
+/// Reduces thousands of findings to ~70 compact groups.
+fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGroup> {
+    use std::collections::BTreeMap;
+
+    // Group by rule name, preserving insertion order via BTreeMap for determinism
+    let mut groups: BTreeMap<&str, Vec<&Diagnostic>> = BTreeMap::new();
+    for diag in diagnostics {
+        groups.entry(&diag.rule).or_default().push(diag);
+    }
+
+    let mut result: Vec<DiagnosticGroup> = groups
+        .into_iter()
+        .map(|(rule, diags)| {
+            let first = diags[0];
+            let examples: Vec<DiagnosticExample> = diags
+                .iter()
+                .take(MAX_EXAMPLES_PER_GROUP)
+                .map(|d| DiagnosticExample {
+                    file_path: d.file_path.display().to_string(),
+                    line: d.line,
+                    column: d.column,
+                })
+                .collect();
+
+            DiagnosticGroup {
+                rule: rule.to_string(),
+                severity: first.severity.to_string(),
+                category: first.category.to_string(),
+                count: diags.len(),
+                message: first.message.clone(),
+                help: first.help.clone(),
+                examples,
+            }
+        })
+        .collect();
+
+    // Sort: errors first, then warnings, then info; within severity by count descending
+    result.sort_by(|a, b| {
+        let severity_ord = |s: &str| -> u8 {
+            match s {
+                "error" => 0,
+                "warning" => 1,
+                _ => 2,
+            }
+        };
+        severity_ord(&a.severity)
+            .cmp(&severity_ord(&b.severity))
+            .then(b.count.cmp(&a.count))
+    });
+
+    result
+}
+
+/// Generate a human-readable markdown summary of scan results.
+fn format_scan_summary(result: &ScanResult, groups: &[DiagnosticGroup]) -> String {
+    use std::fmt::Write;
+
+    let mut s = String::with_capacity(2048);
+    let _ = writeln!(
+        s,
+        "## {}/100 ({}) — {} files in {:.1}s\n",
+        result.score,
+        result.score_label,
+        result.source_file_count,
+        result.elapsed.as_secs_f64()
+    );
+    let _ = writeln!(
+        s,
+        "{} errors, {} warnings, {} info\n",
+        result.error_count, result.warning_count, result.info_count
+    );
+
+    // Dimension scores
+    let _ = writeln!(s, "### Dimensions");
+    let _ = writeln!(
+        s,
+        "Security: {} | Reliability: {} | Performance: {} | Dependencies: {} | Maintainability: {}\n",
+        result.dimension_scores.security,
+        result.dimension_scores.reliability,
+        result.dimension_scores.performance,
+        result.dimension_scores.dependencies,
+        result.dimension_scores.maintainability
+    );
+
+    // Top issues (errors first, then top warnings)
+    let actionable: Vec<&DiagnosticGroup> = groups
+        .iter()
+        .filter(|g| g.severity != "info")
+        .take(15)
+        .collect();
+
+    if !actionable.is_empty() {
+        let _ = writeln!(s, "### Top Issues");
+        for g in &actionable {
+            let _ = writeln!(s, "- **{}** ({}) ×{}", g.rule, g.severity, g.count);
+        }
+        s.push('\n');
+    }
+
+    if !result.skipped_passes.is_empty() {
+        let _ = writeln!(s, "### Skipped Passes");
+        for pass in &result.skipped_passes {
+            let _ = writeln!(s, "- {pass}");
+        }
+    }
+
+    s
+}
+
+// ---------------------------------------------------------------------------
 // Rule knowledge base (derived from trait implementations at runtime)
 // ---------------------------------------------------------------------------
 
@@ -1471,6 +1633,54 @@ mod tests {
         // Verify ScanOutput structure
         assert!(result.score <= 100);
         assert!(result.source_file_count > 0);
+    }
+
+    #[test]
+    fn test_scan_output_grouping() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let (_dir, project_info, resolved) = discover_and_resolve(manifest_dir, false).unwrap();
+        let result = scan::scan_project(&project_info, &resolved, true, &[], true).unwrap();
+
+        let total = result.diagnostics.len();
+        let grouped = group_diagnostics(&result.diagnostics);
+        let summary = format_scan_summary(&result, &grouped);
+
+        // Grouping reduces count
+        assert!(
+            grouped.len() < total,
+            "grouping should compress: {} groups from {} diagnostics",
+            grouped.len(),
+            total
+        );
+        // Each group has examples
+        for g in &grouped {
+            assert!(!g.examples.is_empty(), "group '{}' has no examples", g.rule);
+            assert!(
+                g.examples.len() <= MAX_EXAMPLES_PER_GROUP,
+                "group '{}' has too many examples",
+                g.rule
+            );
+            assert!(g.count > 0);
+        }
+        // Summary is non-empty and contains score
+        assert!(summary.contains(&result.score.to_string()));
+        // Sorted: errors before warnings before info
+        let severities: Vec<&str> = grouped.iter().map(|g| g.severity.as_str()).collect();
+        for window in severities.windows(2) {
+            let ord = |s: &str| -> u8 {
+                match s {
+                    "error" => 0,
+                    "warning" => 1,
+                    _ => 2,
+                }
+            };
+            assert!(
+                ord(window[0]) <= ord(window[1]),
+                "groups not sorted by severity: {} before {}",
+                window[0],
+                window[1]
+            );
+        }
     }
 
     #[test]
