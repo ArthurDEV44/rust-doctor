@@ -111,6 +111,9 @@ pub struct HealthCheckArgs {
 /// Maximum number of example locations shown per diagnostic group.
 const MAX_EXAMPLES_PER_GROUP: usize = 3;
 
+/// Maximum number of top issues shown in the summary markdown.
+const MAX_SUMMARY_ISSUES: usize = 15;
+
 /// A single example location for a diagnostic finding.
 #[derive(Serialize, JsonSchema)]
 pub struct DiagnosticExample {
@@ -1053,10 +1056,9 @@ fn discover_and_resolve(
 /// Group individual diagnostics by rule, sorted by severity then count.
 /// Reduces thousands of findings to ~70 compact groups.
 fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGroup> {
-    use std::collections::BTreeMap;
+    use std::collections::HashMap;
 
-    // Group by rule name, preserving insertion order via BTreeMap for determinism
-    let mut groups: BTreeMap<&str, Vec<&Diagnostic>> = BTreeMap::new();
+    let mut groups: HashMap<&str, Vec<&Diagnostic>> = HashMap::new();
     for diag in diagnostics {
         groups.entry(&diag.rule).or_default().push(diag);
     }
@@ -1081,7 +1083,7 @@ fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGroup> {
                 category: first.category.to_string(),
                 count: diags.len(),
                 message: first.message.clone(),
-                help: first.help.clone(),
+                help: diags.iter().find_map(|d| d.help.as_ref()).cloned(),
                 examples,
             }
         })
@@ -1139,7 +1141,7 @@ fn format_scan_summary(result: &ScanResult, groups: &[DiagnosticGroup]) -> Strin
     let actionable: Vec<&DiagnosticGroup> = groups
         .iter()
         .filter(|g| g.severity != "info")
-        .take(15)
+        .take(MAX_SUMMARY_ISSUES)
         .collect();
 
     if !actionable.is_empty() {
@@ -1634,6 +1636,82 @@ mod tests {
         assert!(result.score <= 100);
         assert!(result.source_file_count > 0);
     }
+
+    // --- Diagnostic grouping unit tests ---
+
+    fn make_diagnostic(
+        rule: &str,
+        severity: crate::diagnostics::Severity,
+        help: Option<&str>,
+    ) -> Diagnostic {
+        Diagnostic {
+            file_path: std::path::PathBuf::from("src/lib.rs"),
+            rule: rule.to_string(),
+            category: crate::diagnostics::Category::ErrorHandling,
+            severity,
+            message: format!("test finding for {rule}"),
+            help: help.map(String::from),
+            line: Some(1),
+            column: None,
+            fix: None,
+        }
+    }
+
+    #[test]
+    fn test_group_diagnostics_empty() {
+        let groups = group_diagnostics(&[]);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn test_group_diagnostics_single() {
+        let diag = make_diagnostic("rule-a", crate::diagnostics::Severity::Error, None);
+        let groups = group_diagnostics(&[diag]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 1);
+        assert_eq!(groups[0].examples.len(), 1);
+    }
+
+    #[test]
+    fn test_group_diagnostics_caps_examples() {
+        let diags: Vec<_> = (0..10)
+            .map(|_| make_diagnostic("rule-a", crate::diagnostics::Severity::Warning, None))
+            .collect();
+        let groups = group_diagnostics(&diags);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].count, 10);
+        assert_eq!(groups[0].examples.len(), MAX_EXAMPLES_PER_GROUP);
+    }
+
+    #[test]
+    fn test_group_diagnostics_sorts_errors_first() {
+        let diags = vec![
+            make_diagnostic("warn-rule", crate::diagnostics::Severity::Warning, None),
+            make_diagnostic("info-rule", crate::diagnostics::Severity::Info, None),
+            make_diagnostic("err-rule", crate::diagnostics::Severity::Error, None),
+        ];
+        let groups = group_diagnostics(&diags);
+        assert_eq!(groups[0].severity, "error");
+        assert_eq!(groups[1].severity, "warning");
+        assert_eq!(groups[2].severity, "info");
+    }
+
+    #[test]
+    fn test_group_diagnostics_help_finds_first_non_none() {
+        let diags = vec![
+            make_diagnostic("rule-a", crate::diagnostics::Severity::Warning, None),
+            make_diagnostic(
+                "rule-a",
+                crate::diagnostics::Severity::Warning,
+                Some("fix it"),
+            ),
+            make_diagnostic("rule-a", crate::diagnostics::Severity::Warning, None),
+        ];
+        let groups = group_diagnostics(&diags);
+        assert_eq!(groups[0].help.as_deref(), Some("fix it"));
+    }
+
+    // --- Integration test: grouping on real project ---
 
     #[test]
     fn test_scan_output_grouping() {
