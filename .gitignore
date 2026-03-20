@@ -2,3 +2,4 @@
 .rust-doctor-cache.json
 rust-doctor-video/node_modules/
 rust-doctor-video/out/
+.meta/

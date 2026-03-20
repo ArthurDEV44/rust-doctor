@@ -1,4 +1,5 @@
 pub mod async_rules;
+pub mod complexity;
 pub mod error_handling;
 pub mod framework;
 pub mod performance;
@@ -246,6 +247,7 @@ pub fn all_custom_rules() -> Vec<Box<dyn CustomRule>> {
     error_handling::all_rules()
         .into_iter()
         .chain(performance::all_rules())
+        .chain(complexity::all_rules())
         .chain(security::all_rules())
         .chain(async_rules::all_rules())
         .chain(framework::all_rules())

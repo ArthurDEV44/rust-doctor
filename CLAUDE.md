@@ -45,34 +45,35 @@ main.rs → --mcp flag? → mcp::run_mcp_server() (stdio transport, rmcp SDK)
 ### Module Visibility
 
 - **Public API** (`pub mod`): `cli`, `config`, `diagnostics`, `discovery`, `error`, `fixer`, `mcp`, `output`, `plan`, `sarif`, `scan`
-- **Internal** (`pub(crate) mod`): `audit`, `cache`, `clippy`, `coverage`, `deny`, `diff`, `geiger`, `machete`, `msrv`, `process`, `rules`, `scanner`, `semver_checks`, `suppression`, `workspace`
+- **Internal** (`pub(crate) mod`): `passes` (re-exported as `audit`, `clippy`, `rules`, etc.), `cache`, `diff`, `process`, `scanner`, `suppression`, `workspace`
 
 ### Analysis Passes (`scanner.rs`)
 
-All passes implement `AnalysisPass` trait (`name()` + `run()` → `Vec<Diagnostic>`). Passes run in parallel via `std::thread::scope`. `PassError::Skipped` is used when external tools aren't installed — emits an Info diagnostic instead of failing.
+All passes implement `AnalysisPass` trait (`name()` + `run()` → `Vec<Diagnostic>`). Passes run in parallel via `std::thread::scope`. `PassError::Skipped` is used when external tools aren't installed — emits an Info diagnostic instead of failing. Passes are grouped by domain under `src/passes/`: `security/` (audit, deny, geiger), `static_analysis/` (clippy, rules), `quality/` (coverage, msrv, machete, semver_checks).
 
-### Custom Rule System (`src/rules/`)
+### Custom Rule System (`src/passes/static_analysis/rules/`)
 
 Rules implement `CustomRule` trait in `rules/mod.rs`. Each rule uses `syn::visit::Visit` to walk the AST. Rules are organized by category across submodules:
 - `error_handling.rs` — unwrap, panic, box-dyn-error, result-unit-error
 - `performance.rs` — clone, string-from-literal, collect-iterate, large-enum, allocation
+- `complexity.rs` — high-cyclomatic-complexity
 - `security.rs` — hardcoded-secrets, unsafe-block-audit, sql-injection
 - `async_rules.rs` — blocking-in-async, block-on-in-async
 - `framework.rs` — tokio-main, axum-handler, actix-blocking, tokio-spawn
 
 Rules are collected by `all_custom_rules()`. Each rule runs inside `catch_unwind` — a panicking rule emits a warning and doesn't crash the scan. Framework-specific and async rules are conditionally included based on `ProjectInfo.frameworks` (detected from dependencies at discovery time).
 
-### Score Calculation (`output.rs`)
+### Score Calculation (`output/score.rs`)
 
-Dimension-based weighted scoring across 5 dimensions (Security ×2.0, Reliability ×1.5, Maintainability ×1.0, Performance ×1.0, Dependencies ×1.0). Counts **unique rules** violated, not occurrences. Clamped to [0, 100].
+Dimension-based weighted scoring across 5 dimensions (Security ×2.0, Reliability ×1.5, Maintainability ×1.0, Performance ×1.0, Dependencies ×1.0). Counts **unique rules** violated, not occurrences. Clamped to [0, 100]. Terminal rendering in `output/terminal.rs`, simple renderers (score/json) in `output/mod.rs`.
 
 ### Clippy Integration (`clippy.rs`)
 
 Spawns `cargo clippy --message-format=json` with 120s timeout. 55+ lints in static `LINT_REGISTRY` with category/severity overrides. Unlisted lints inherit clippy defaults and map to `Category::Style`.
 
-### MCP Server (`mcp.rs`, feature-gated)
+### MCP Server (`src/mcp/`, feature-gated)
 
-4 tools (scan, score, explain_rule, list_rules), all read-only. Security hardening: directory must be under `$HOME`, 5-minute timeout, offline mode by default, path sanitization in errors. Built with rmcp v1.2.0 over stdio transport.
+4 tools (scan, score, explain_rule, list_rules), all read-only. Split into `mod.rs` (server + entry), `types.rs` (schemas), `tools.rs` (handlers), `helpers.rs` (formatting), `rules.rs` (rule docs). Security hardening: directory must be under `$HOME`, 5-minute timeout, offline mode by default, path sanitization in errors. Built with rmcp v1.2.0 over stdio transport.
 
 ### Configuration Priority
 
@@ -89,6 +90,10 @@ Diagnostics → **stderr**, score box → **stdout**. This is intentional for pi
 - **Snapshot tests** (`tests/snapshots.rs`): `insta` JSON snapshots for serialization stability
 - **Self-scan tests**: several modules scan the rust-doctor codebase itself as a sanity check
 
+## Compaction Guidance
+
+When compacting, always preserve: the list of modified files, current test commands, any error types or trait impls being changed, and the scan pipeline stage being worked on.
+
 ## Key Design Decisions
 
 - `proc-macro2` with `span-locations` feature enables source line/column from `syn` AST nodes
@@ -97,3 +102,11 @@ Diagnostics → **stderr**, score box → **stdout**. This is intentional for pi
 - `--no-project-config` bypasses file config (used in MCP for untrusted projects)
 - Release profile uses `opt-level = "z"` (size-optimized) for npm binary distribution
 - Clippy pedantic is enabled project-wide with specific allows (`must_use_candidate`, `module_name_repetitions`, `missing_errors_doc`, `missing_panics_doc`)
+
+## Recommended Hooks
+
+Critical rules that benefit from deterministic enforcement via `.claude/settings.json` hooks rather than advisory CLAUDE.md instructions:
+
+- `cargo fmt --check` — pre-commit: formatting is non-negotiable
+- `cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -D warnings` — post-edit: lint pedantic obligatory
+- Verify no `unsafe` in modified files — post-edit: production unsafe is banned

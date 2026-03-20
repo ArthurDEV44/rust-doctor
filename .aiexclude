@@ -1,0 +1,6 @@
+# Exclude build artifacts and generated content from AI code assistants
+target/
+website/node_modules/
+.meta/
+*.lock
+tests/snapshots/

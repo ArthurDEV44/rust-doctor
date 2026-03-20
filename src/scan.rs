@@ -24,6 +24,8 @@ pub fn custom_rule_names() -> Vec<String> {
 ///
 /// This is the core scanning pipeline used by both the CLI and MCP server.
 /// The caller is responsible for project discovery and config resolution.
+///
+/// Pipeline: validate → resolve roots → run passes (parallel) → dedup → diff filter → suppress → score
 pub fn scan_project(
     project_info: &ProjectInfo,
     resolved: &ResolvedConfig,
@@ -31,13 +33,18 @@ pub fn scan_project(
     project_filter: &[String],
     suppress_spinner: bool,
 ) -> Result<ScanResult, crate::error::ScanError> {
+    // Step 1: Verify ignored rules are known — warns on typos in config
     validate_config(resolved);
 
+    // Step 2: Resolve workspace members or single project root
     let scan_roots = resolve_scan_roots(project_info, resolved, project_filter)?;
     log_project_info(project_info, resolved);
 
+    // Step 3: Parse git diff if --diff was specified (narrows scope to changed files)
     let diff_context = resolve_diff_context(project_info, resolved);
 
+    // Step 4: Run all analysis passes in parallel
+    // Two levels of parallelism: rayon for scan roots, std::thread::scope for passes within a root
     let (mut all_diagnostics, total_source_files, all_skipped_passes, total_elapsed) = run_passes(
         project_info,
         resolved,
@@ -47,14 +54,18 @@ pub fn scan_project(
         suppress_spinner,
     );
 
+    // Step 5: Deduplicate — same rule+file+line from overlapping workspace scans = one diagnostic
     dedup_diagnostics(&mut all_diagnostics);
 
+    // Step 6: In diff mode, drop diagnostics outside changed files
     if let Some(ref ctx) = diff_context {
         all_diagnostics = diff::filter_to_changed_files(all_diagnostics, &ctx.changed_files);
     }
 
+    // Step 7: Apply inline suppressions (// rust-doctor-disable-next-line <rule>)
     let all_diagnostics = apply_suppressions(all_diagnostics, project_info, resolved);
 
+    // Step 8: Calculate score and build the final result
     Ok(build_result(
         all_diagnostics,
         total_source_files,
@@ -149,6 +160,10 @@ fn resolve_diff_context(
     ctx
 }
 
+/// Construct the set of analysis passes based on project info and config.
+/// Lint passes (clippy + custom rules) are always included when lint=true.
+/// Dependency passes (audit, deny, geiger, machete, semver, coverage) run
+/// only when dependencies=true and NOT in diff mode (they scan the whole project).
 fn build_passes(
     project_info: &ProjectInfo,
     resolved: &ResolvedConfig,
@@ -172,6 +187,7 @@ fn build_passes(
             rules::error_handling::all_rules()
                 .into_iter()
                 .chain(rules::performance::all_rules())
+                .chain(rules::complexity::all_rules())
                 .chain(rules::security::all_rules())
                 .chain(if has_async_runtime {
                     rules::async_rules::all_rules()
@@ -330,5 +346,109 @@ fn build_result(
         error_count,
         warning_count,
         info_count,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::Category;
+    use std::path::PathBuf;
+
+    fn make_diagnostic(rule: &str, severity: Severity, line: Option<u32>) -> Diagnostic {
+        Diagnostic {
+            file_path: PathBuf::from("src/main.rs"),
+            rule: rule.to_string(),
+            category: Category::Correctness,
+            severity,
+            message: format!("test diagnostic for {rule}"),
+            help: None,
+            line,
+            column: None,
+            fix: None,
+        }
+    }
+
+    #[test]
+    fn custom_rule_names_includes_all_rules() {
+        let names = custom_rule_names();
+        // Must include custom AST rules + the special "unused-dependency" rule
+        assert!(names.contains(&"unwrap-in-production".to_string()));
+        assert!(names.contains(&"high-cyclomatic-complexity".to_string()));
+        assert!(names.contains(&"hardcoded-secrets".to_string()));
+        assert!(names.contains(&"unused-dependency".to_string()));
+        // At least 15+ rules (5 error_handling + 5 performance + 1 complexity + 3 security + ...)
+        assert!(
+            names.len() >= 15,
+            "Expected >= 15 rules, got {}",
+            names.len()
+        );
+    }
+
+    #[test]
+    fn dedup_removes_duplicate_diagnostics() {
+        let mut diags = vec![
+            make_diagnostic("rule-a", Severity::Warning, Some(10)),
+            make_diagnostic("rule-a", Severity::Warning, Some(10)), // duplicate
+            make_diagnostic("rule-b", Severity::Error, Some(20)),
+        ];
+        dedup_diagnostics(&mut diags);
+        assert_eq!(diags.len(), 2);
+        assert_eq!(diags[0].rule, "rule-a");
+        assert_eq!(diags[1].rule, "rule-b");
+    }
+
+    #[test]
+    fn dedup_keeps_different_lines() {
+        let mut diags = vec![
+            make_diagnostic("rule-a", Severity::Warning, Some(10)),
+            make_diagnostic("rule-a", Severity::Warning, Some(20)), // same rule, different line
+        ];
+        dedup_diagnostics(&mut diags);
+        assert_eq!(diags.len(), 2);
+    }
+
+    #[test]
+    fn dedup_handles_empty() {
+        let mut diags: Vec<Diagnostic> = vec![];
+        dedup_diagnostics(&mut diags);
+        assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn build_result_counts_severities() {
+        let diags = vec![
+            make_diagnostic("err1", Severity::Error, Some(1)),
+            make_diagnostic("err2", Severity::Error, Some(2)),
+            make_diagnostic("warn1", Severity::Warning, Some(3)),
+            make_diagnostic("info1", Severity::Info, Some(4)),
+        ];
+        let result = build_result(diags, 10, vec![], Duration::from_secs(1));
+        assert_eq!(result.error_count, 2);
+        assert_eq!(result.warning_count, 1);
+        assert_eq!(result.info_count, 1);
+        assert_eq!(result.source_file_count, 10);
+    }
+
+    #[test]
+    fn build_result_deduplicates_skipped_passes() {
+        let skipped = vec![
+            "cargo-deny".to_string(),
+            "cargo-audit".to_string(),
+            "cargo-deny".to_string(), // duplicate
+        ];
+        let result = build_result(vec![], 0, skipped, Duration::ZERO);
+        assert_eq!(result.skipped_passes.len(), 2);
+        assert_eq!(result.skipped_passes[0], "cargo-audit"); // sorted
+        assert_eq!(result.skipped_passes[1], "cargo-deny");
+    }
+
+    #[test]
+    fn build_result_empty_diagnostics_gives_perfect_score() {
+        let result = build_result(vec![], 5, vec![], Duration::from_millis(100));
+        assert_eq!(result.score, 100);
+        assert_eq!(result.error_count, 0);
+        assert_eq!(result.warning_count, 0);
+        assert_eq!(result.info_count, 0);
     }
 }

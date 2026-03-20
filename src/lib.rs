@@ -97,18 +97,21 @@ pub mod sarif;
 pub mod scan;
 
 // Internal implementation modules
-pub(crate) mod audit;
 pub(crate) mod cache;
-pub(crate) mod clippy;
-pub(crate) mod coverage;
-pub(crate) mod deny;
 pub(crate) mod diff;
-pub(crate) mod geiger;
-pub(crate) mod machete;
-pub(crate) mod msrv;
+pub(crate) mod passes;
 pub(crate) mod process;
-pub(crate) mod rules;
 pub(crate) mod scanner;
-pub(crate) mod semver_checks;
 pub(crate) mod suppression;
 pub(crate) mod workspace;
+
+// Re-export pass modules at crate root so existing `use crate::audit` etc. still work.
+pub(crate) use passes::quality::coverage;
+pub(crate) use passes::quality::machete;
+pub(crate) use passes::quality::msrv;
+pub(crate) use passes::quality::semver_checks;
+pub(crate) use passes::security::audit;
+pub(crate) use passes::security::deny;
+pub(crate) use passes::security::geiger;
+pub(crate) use passes::static_analysis::clippy;
+pub(crate) use passes::static_analysis::rules;

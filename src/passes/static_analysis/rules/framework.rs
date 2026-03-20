@@ -7,6 +7,8 @@ use syn::visit::Visit;
 
 // ─── Rule 1: tokio-main-missing ─────────────────────────────────────────────
 
+/// Detects `async fn main()` without a runtime attribute (`#[tokio::main]`, `#[async_std::main]`, etc.).
+/// Only fires in `main.rs` files — an async main without a runtime macro will fail to compile or panic.
 pub struct TokioMainMissing;
 
 impl CustomRule for TokioMainMissing {
@@ -77,6 +79,9 @@ impl CustomRule for TokioMainMissing {
 
 // ─── Rule 2: tokio-spawn-without-move ───────────────────────────────────────
 
+/// Detects `tokio::spawn(async { ... })` without the `move` keyword.
+/// Without `move`, the spawned task borrows from the enclosing scope, which typically
+/// fails to compile due to the `'static` bound on `tokio::spawn`.
 pub struct TokioSpawnWithoutMove;
 
 impl CustomRule for TokioSpawnWithoutMove {
@@ -154,6 +159,8 @@ const fn is_non_move_async_block(expr: &syn::Expr) -> bool {
 
 // ─── Rule 3: axum-handler-not-async ─────────────────────────────────────────
 
+/// Detects non-async functions that accept axum extractor types (`Json`, `Path`, `Query`, etc.).
+/// Axum handlers run on the async runtime and should be `async fn` to avoid blocking the executor.
 pub struct AxumHandlerNotAsync;
 
 const AXUM_EXTRACTOR_TYPES: &[&str] = &[
@@ -235,6 +242,8 @@ fn type_contains_axum_extractor(ty: &syn::Type) -> bool {
 
 // ─── Rule 4: actix-blocking-handler ─────────────────────────────────────────
 
+/// Detects non-async functions that accept `actix_web` extractor types (prefixed with `web::*`).
+/// Actix-web handlers must be async to integrate with the runtime's event loop.
 pub struct ActixBlockingHandler;
 
 const ACTIX_EXTRACTOR_PREFIXES: &[&str] = &["web"];
