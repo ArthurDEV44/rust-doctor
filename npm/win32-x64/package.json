@@ -1,6 +1,6 @@
 {
   "name": "@rust-doctor/win32-x64",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "rust-doctor native binary for Windows x64",
   "license": "MIT OR Apache-2.0",
   "repository": {
