@@ -148,11 +148,10 @@ pub struct DiagnosticGroup {
     pub examples: Vec<DiagnosticExample>,
 }
 
-/// Structured output for the scan tool.
+/// Structured output for the scan tool (used as `structuredContent`).
+/// The human-readable summary is returned as a separate text content block.
 #[derive(Serialize, JsonSchema)]
 pub struct ScanOutput {
-    /// Human-readable markdown summary of the scan results.
-    pub summary: String,
     /// Diagnostics grouped by rule (not individual findings).
     /// Each group shows the rule, count, and up to 3 example locations.
     pub diagnostics: Vec<DiagnosticGroup>,
@@ -225,7 +224,7 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
         meta: rmcp::model::Meta,
         client: rmcp::Peer<RoleServer>,
         params: Parameters<ScanInput>,
-    ) -> Result<Json<ScanOutput>, McpError> {
+    ) -> Result<CallToolResult, McpError> {
         let input = params.0;
         let progress_token = meta.get_progress_token();
 
@@ -337,8 +336,7 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
         let grouped = group_diagnostics(&result.diagnostics);
         let summary = format_scan_summary(&result, &grouped);
 
-        Ok(Json(ScanOutput {
-            summary,
+        let output = ScanOutput {
             diagnostics: grouped,
             total_diagnostic_count,
             score: result.score,
@@ -350,7 +348,16 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
             error_count: result.error_count,
             warning_count: result.warning_count,
             info_count: result.info_count,
-        }))
+        };
+
+        // Return markdown summary as text (LLM reads this first) +
+        // structured JSON for programmatic access
+        let structured = serde_json::to_value(&output)
+            .map_err(|e| McpError::internal_error(format!("serialization error: {e}"), None))?;
+
+        let mut result = CallToolResult::success(vec![Content::text(summary)]);
+        result.structured_content = Some(structured);
+        Ok(result)
     }
 
     #[tool(
@@ -1523,13 +1530,15 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_tool_has_output_schema() {
+    fn test_scan_tool_returns_call_tool_result() {
+        // scan returns CallToolResult (text summary + structuredContent),
+        // not Json<T>, so it has no auto-generated outputSchema.
         let server = RustDoctorServer::new();
         let tools = server.tool_router.list_all();
         let scan = tools.iter().find(|t| t.name == "scan").unwrap();
         assert!(
-            scan.output_schema.is_some(),
-            "scan tool should have outputSchema from Json<ScanOutput>"
+            scan.output_schema.is_none(),
+            "scan uses CallToolResult, not Json<T>"
         );
     }
 
