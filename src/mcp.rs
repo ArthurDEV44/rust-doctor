@@ -7,8 +7,8 @@ use rmcp::model::{
     AnnotateAble, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
     ListPromptsResult, ListResourcesResult, LoggingLevel, LoggingMessageNotificationParam,
     PaginatedRequestParams, PromptMessage, PromptMessageRole, RawResource,
-    ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
-    ServerCapabilities, ServerInfo,
+    ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents, ServerCapabilities,
+    ServerInfo,
 };
 use rmcp::service::{RequestContext, ServiceExt};
 use rmcp::{
@@ -377,7 +377,10 @@ If you also need the diagnostics, use scan instead — it includes the score too
                     progress_token: token.clone(),
                     progress: 1.0,
                     total: Some(1.0),
-                    message: Some(format!("Score: {}/100 ({})", result.score, result.score_label)),
+                    message: Some(format!(
+                        "Score: {}/100 ({})",
+                        result.score, result.score_label
+                    )),
                 })
                 .await;
         }
