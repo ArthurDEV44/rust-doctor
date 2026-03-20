@@ -5,9 +5,10 @@ use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{
     AnnotateAble, CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
-    ListPromptsResult, ListResourcesResult, PaginatedRequestParams, PromptMessage,
-    PromptMessageRole, RawResource, ReadResourceRequestParams, ReadResourceResult, Resource,
-    ResourceContents, ServerCapabilities, ServerInfo,
+    ListPromptsResult, ListResourcesResult, LoggingLevel, LoggingMessageNotificationParam,
+    PaginatedRequestParams, PromptMessage, PromptMessageRole, RawResource,
+    ReadResourceRequestParams, ReadResourceResult, Resource, ResourceContents,
+    ServerCapabilities, ServerInfo,
 };
 use rmcp::service::{RequestContext, ServiceExt};
 use rmcp::{
@@ -166,7 +167,13 @@ Severity levels: error (bugs/security), warning (code smells), info (suggestions
 Runs 4 passes in parallel: clippy (55+ lints), 19 custom AST rules, cargo-audit (CVEs), cargo-machete (unused deps). \
 Set 'diff' to a branch name to only scan changed files. \
 After scanning, use explain_rule on any rule ID to get fix guidance.",
-        annotations(read_only_hint = true)
+        annotations(
+            title = "Scan Project",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
     async fn scan(
         &self,
@@ -188,6 +195,13 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
                 })
                 .await;
         }
+        let _ = client
+            .notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("rust-doctor".into()),
+                data: serde_json::json!("Bootstrapping project..."),
+            })
+            .await;
 
         let (_dir, project_info, mut resolved) =
             discover_and_resolve(&input.directory, input.ignore_project_config)?;
@@ -209,6 +223,15 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
                 })
                 .await;
         }
+        let _ = client
+            .notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("rust-doctor".into()),
+                data: serde_json::json!(
+                    "Running 4 analysis passes (clippy, AST rules, cargo-audit, cargo-machete)..."
+                ),
+            })
+            .await;
 
         // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
         let offline = input.offline;
@@ -249,6 +272,21 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
                 })
                 .await;
         }
+        let _ = client
+            .notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("rust-doctor".into()),
+                data: serde_json::Value::String(format!(
+                    "Scan complete: {}/100 ({}) — {} errors, {} warnings, {} info in {:.1}s",
+                    result.score,
+                    result.score_label,
+                    result.error_count,
+                    result.warning_count,
+                    result.info_count,
+                    result.elapsed.as_secs_f64()
+                )),
+            })
+            .await;
 
         Ok(Json(ScanOutput {
             diagnostics: result.diagnostics,
@@ -272,10 +310,41 @@ IMPORTANT: runs the same full analysis as scan internally, so takes the same 5-3
 Score thresholds: >=75 'Great', >=50 'Needs work', <50 'Critical'. \
 Scoring: each unique error-severity rule violated costs 1.5 points, each warning costs 0.75 points. \
 If you also need the diagnostics, use scan instead — it includes the score too.",
-        annotations(read_only_hint = true)
+        annotations(
+            title = "Score Project",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
-    async fn score(&self, params: Parameters<ScoreInput>) -> Result<Json<ScoreOutput>, McpError> {
+    async fn score(
+        &self,
+        meta: rmcp::model::Meta,
+        client: rmcp::Peer<RoleServer>,
+        params: Parameters<ScoreInput>,
+    ) -> Result<Json<ScoreOutput>, McpError> {
         let input = params.0;
+        let progress_token = meta.get_progress_token();
+
+        if let Some(ref token) = progress_token {
+            let _ = client
+                .notify_progress(rmcp::model::ProgressNotificationParam {
+                    progress_token: token.clone(),
+                    progress: 0.0,
+                    total: Some(1.0),
+                    message: Some("Scoring project...".to_string()),
+                })
+                .await;
+        }
+        let _ = client
+            .notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("rust-doctor".into()),
+                data: serde_json::json!("Scoring project..."),
+            })
+            .await;
+
         let (_dir, project_info, resolved) = discover_and_resolve(&input.directory, false)?;
 
         // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
@@ -302,6 +371,27 @@ If you also need the diagnostics, use scan instead — it includes the score too
             )
         })?;
 
+        if let Some(ref token) = progress_token {
+            let _ = client
+                .notify_progress(rmcp::model::ProgressNotificationParam {
+                    progress_token: token.clone(),
+                    progress: 1.0,
+                    total: Some(1.0),
+                    message: Some(format!("Score: {}/100 ({})", result.score, result.score_label)),
+                })
+                .await;
+        }
+        let _ = client
+            .notify_logging_message(LoggingMessageNotificationParam {
+                level: LoggingLevel::Info,
+                logger: Some("rust-doctor".into()),
+                data: serde_json::Value::String(format!(
+                    "Score: {}/100 ({})",
+                    result.score, result.score_label
+                )),
+            })
+            .await;
+
         Ok(Json(ScoreOutput {
             score: result.score,
             score_label: result.score_label,
@@ -316,7 +406,13 @@ Returns: rule name, category, severity, description, and fix guidance. \
 Accepts custom rule IDs (e.g. 'unwrap-in-production') and clippy lint names (e.g. 'clippy::expect_used'). \
 Instant response — no project scanning required. \
 For unknown rules, returns guidance to use list_rules.",
-        annotations(read_only_hint = true)
+        annotations(
+            title = "Explain Rule",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
     async fn explain_rule(
         &self,
@@ -334,7 +430,13 @@ Instant response — no project scanning required. \
 Returns: 19 custom AST rules (grouped by Error Handling, Performance, Architecture, Security, Async, Framework), \
 55+ clippy lints with custom severity overrides, and 2 external tools (cargo-audit, cargo-machete). \
 Each entry shows rule ID, severity, and one-line summary.",
-        annotations(read_only_hint = true)
+        annotations(
+            title = "List Rules",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false,
+        )
     )]
     async fn list_rules(&self) -> Result<CallToolResult, McpError> {
         let listing = get_all_rules_listing();
@@ -708,6 +810,7 @@ impl rmcp::handler::server::ServerHandler for RustDoctorServer {
                 .enable_tools()
                 .enable_resources()
                 .enable_prompts()
+                .enable_logging()
                 .build(),
         )
         .with_instructions(
@@ -1272,6 +1375,49 @@ mod tests {
             score.output_schema.is_some(),
             "score tool should have outputSchema from Json<ScoreOutput>"
         );
+    }
+
+    // --- Tool annotations ---
+
+    #[test]
+    fn test_all_tools_have_correct_annotations() {
+        let server = RustDoctorServer::new();
+        let tools = server.tool_router.list_all();
+        for tool in &tools {
+            let ann = tool
+                .annotations
+                .as_ref()
+                .unwrap_or_else(|| panic!("tool '{}' missing annotations", tool.name));
+            assert_eq!(
+                ann.read_only_hint,
+                Some(true),
+                "tool '{}' should be read-only",
+                tool.name
+            );
+            assert_eq!(
+                ann.destructive_hint,
+                Some(false),
+                "tool '{}' should not be destructive",
+                tool.name
+            );
+            assert_eq!(
+                ann.idempotent_hint,
+                Some(true),
+                "tool '{}' should be idempotent",
+                tool.name
+            );
+            assert_eq!(
+                ann.open_world_hint,
+                Some(false),
+                "tool '{}' should be closed-world",
+                tool.name
+            );
+            assert!(
+                ann.title.is_some(),
+                "tool '{}' should have a title",
+                tool.name
+            );
+        }
     }
 
     // --- discover_and_resolve error mapping ---
