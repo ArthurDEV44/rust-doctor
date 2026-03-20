@@ -103,7 +103,7 @@ const softwareJsonLd = {
   url: "https://rust-doctor.dev",
   downloadUrl: "https://crates.io/crates/rust-doctor",
   installUrl: "https://www.npmjs.com/package/rust-doctor",
-  softwareVersion: process.env.NEXT_PUBLIC_VERSION || "0.1.7",
+  softwareVersion: process.env.NEXT_PUBLIC_VERSION || "0.1.8",
   description:
     "Scan Rust projects for security, performance, correctness, architecture, and dependency issues. Get a 0-100 health score with actionable diagnostics.",
   featureList: [

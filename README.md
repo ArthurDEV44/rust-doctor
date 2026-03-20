@@ -134,6 +134,13 @@ rust-doctor includes a built-in [Model Context Protocol](https://modelcontextpro
 
 All tools are read-only (`readOnlyHint: true`).
 
+### Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `deep-audit` | Comprehensive 6-phase expert audit: codebase exploration, static analysis, deep code review (51-item checklist), best practices research, synthesis report, and remediation choices (implement all / generate PRD / manual). |
+| `health-check` | Quick scan + prioritized remediation plan (P0–P3) + fix workflow. |
+
 ### Claude Code
 
 **One-command install:**
