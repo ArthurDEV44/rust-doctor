@@ -6,7 +6,7 @@ rust-doctor scans Rust projects for security, performance, correctness, architec
 
 ## What is rust-doctor?
 
-rust-doctor is an open-source Rust static analysis tool that goes beyond clippy. It combines 700+ clippy lints, 18 custom AST rules, CVE detection via cargo-audit, and unused dependency detection via cargo-machete into a single health score.
+rust-doctor is an open-source Rust static analysis tool that goes beyond clippy. It combines 700+ clippy lints, 19 custom AST rules, CVE detection via cargo-audit, and unused dependency detection via cargo-machete into a single health score.
 
 ## How is the health score calculated?
 
@@ -15,7 +15,7 @@ Score = 100 − (unique error rules × 1.5) − (unique warning rules × 0.75), 
 ## Key features
 
 - 700+ clippy lints with severity overrides across pedantic, nursery, and cargo groups
-- 18 custom AST rules via syn: error handling, performance, security, async, framework anti-patterns
+- 19 custom AST rules via syn: error handling, performance, security, async, framework anti-patterns
 - CVE detection via cargo-audit against the RustSec Advisory Database
 - Unused dependency detection via cargo-machete
 - Framework-specific rules for tokio, axum, actix-web
@@ -25,7 +25,7 @@ Score = 100 − (unique error rules × 1.5) − (unique warning rules × 0.75), 
 - Diff mode for scanning only changed files
 - SARIF output for GitHub Code Scanning integration
 
-## 18 custom AST rules
+## 19 custom AST rules
 
 - Error Handling: unwrap-in-production, panic-in-library, box-dyn-error-in-public-api, result-unit-error
 - Performance: excessive-clone, string-from-literal, collect-then-iterate, large-enum-variant, unnecessary-allocation
@@ -43,6 +43,7 @@ cargo install rust-doctor
 claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp
 
 MCP tools: scan (full diagnostics + score), score (quick 0-100), explain_rule (rule docs), list_rules (all rules)
+MCP prompts: deep-audit (6-phase expert audit with codebase exploration, scan, deep code review, best practices web research, synthesis report, and remediation choices), health-check (quick scan + remediation plan + fix workflow)
 
 ## GitHub Actions
 
@@ -53,7 +54,7 @@ MCP tools: scan (full diagnostics + score), score (quick 0-100), explain_rule (r
 
 ## How does rust-doctor compare to clippy?
 
-rust-doctor runs Clippy internally and adds 18 custom AST rules that Clippy doesn't cover: hardcoded secret detection, blocking-in-async detection, framework-specific rules, and architectural anti-patterns. It also integrates cargo-audit and cargo-machete.
+rust-doctor runs Clippy internally and adds 19 custom AST rules that Clippy doesn't cover: hardcoded secret detection, blocking-in-async detection, framework-specific rules, and architectural anti-patterns. It also integrates cargo-audit and cargo-machete.
 
 ## Links
 

@@ -41,6 +41,25 @@ The MCP server exposes 4 read-only tools:
 | `explain_rule` | Explain any rule by name with examples and fix guidance |
 | `list_rules` | List all available checks with categories and severities |
 
+## Prompts
+
+The MCP server includes structured workflow prompts that guide AI assistants through complex tasks:
+
+### `deep-audit`
+
+Comprehensive 6-phase expert audit that goes far beyond linting:
+
+1. **Discovery** — Explores codebase architecture, dependencies, patterns
+2. **Static Analysis** — Runs rust-doctor scan with full diagnostics
+3. **Deep Code Review** — Manual review against a 50+ item expert checklist (error handling, ownership, type design, async correctness, security hardening, dependency health)
+4. **Best Practices Research** — Searches the web for current Rust best practices relevant to the issues found
+5. **Synthesis Report** — Cross-references all findings into a structured report with before/after code
+6. **Decision** — Offers three choices: implement all fixes, generate a PRD, or manual prompt
+
+### `health-check`
+
+Quick 4-phase workflow: scan → prioritized remediation plan (P0–P3) → confirmation → fix.
+
 ## Security
 
 The MCP server applies these security constraints:
