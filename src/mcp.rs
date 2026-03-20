@@ -1,4 +1,4 @@
-use crate::diagnostics::{Diagnostic, DimensionScores, ScanResult, ScoreLabel};
+use crate::diagnostics::{Diagnostic, ScanResult, ScoreLabel};
 use crate::{clippy, config, discovery, rules, scan};
 use rmcp::handler::server::router::prompt::PromptRouter;
 use rmcp::handler::server::tool::ToolRouter;
@@ -111,9 +111,6 @@ pub struct HealthCheckArgs {
 /// Maximum number of example locations shown per diagnostic group.
 const MAX_EXAMPLES_PER_GROUP: usize = 3;
 
-/// Maximum number of top issues shown in the summary markdown.
-const MAX_SUMMARY_ISSUES: usize = 15;
-
 /// A single example location for a diagnostic finding.
 #[derive(Serialize, JsonSchema)]
 pub struct DiagnosticExample {
@@ -146,35 +143,6 @@ pub struct DiagnosticGroup {
     pub help: Option<String>,
     /// Example locations (up to 3).
     pub examples: Vec<DiagnosticExample>,
-}
-
-/// Structured output for the scan tool (used as `structuredContent`).
-/// The human-readable summary is returned as a separate text content block.
-#[derive(Serialize, JsonSchema)]
-pub struct ScanOutput {
-    /// Diagnostics grouped by rule (not individual findings).
-    /// Each group shows the rule, count, and up to 3 example locations.
-    pub diagnostics: Vec<DiagnosticGroup>,
-    /// Total number of individual diagnostic findings before grouping.
-    pub total_diagnostic_count: usize,
-    /// Health score from 0 (critical) to 100 (perfect).
-    pub score: u32,
-    /// Human-readable score label.
-    pub score_label: ScoreLabel,
-    /// Per-dimension health scores.
-    pub dimension_scores: DimensionScores,
-    /// Number of source files that were analyzed.
-    pub source_file_count: usize,
-    /// Total scan duration in seconds.
-    pub elapsed_secs: f64,
-    /// Analysis passes that were skipped or failed.
-    pub skipped_passes: Vec<String>,
-    /// Total number of error-severity findings.
-    pub error_count: usize,
-    /// Total number of warning-severity findings.
-    pub warning_count: usize,
-    /// Total number of info-severity findings.
-    pub info_count: usize,
 }
 
 /// Structured output for the score tool.
@@ -332,32 +300,10 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
             })
             .await;
 
-        let total_diagnostic_count = result.diagnostics.len();
         let grouped = group_diagnostics(&result.diagnostics);
-        let summary = format_scan_summary(&result, &grouped);
+        let report = format_scan_report(&result, &grouped);
 
-        let output = ScanOutput {
-            diagnostics: grouped,
-            total_diagnostic_count,
-            score: result.score,
-            score_label: result.score_label,
-            dimension_scores: result.dimension_scores,
-            source_file_count: result.source_file_count,
-            elapsed_secs: result.elapsed.as_secs_f64(),
-            skipped_passes: result.skipped_passes,
-            error_count: result.error_count,
-            warning_count: result.warning_count,
-            info_count: result.info_count,
-        };
-
-        // Return markdown summary as text (LLM reads this first) +
-        // structured JSON for programmatic access
-        let structured = serde_json::to_value(&output)
-            .map_err(|e| McpError::internal_error(format!("serialization error: {e}"), None))?;
-
-        let mut result = CallToolResult::success(vec![Content::text(summary)]);
-        result.structured_content = Some(structured);
-        Ok(result)
+        Ok(CallToolResult::success(vec![Content::text(report)]))
     }
 
     #[tool(
@@ -1113,14 +1059,17 @@ fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGroup> {
     result
 }
 
-/// Generate a human-readable markdown summary of scan results.
-fn format_scan_summary(result: &ScanResult, groups: &[DiagnosticGroup]) -> String {
+/// Generate a complete markdown report of scan results.
+/// This is the sole output of the scan tool — no JSON, pure readable text.
+fn format_scan_report(result: &ScanResult, groups: &[DiagnosticGroup]) -> String {
     use std::fmt::Write;
 
-    let mut s = String::with_capacity(2048);
+    let mut s = String::with_capacity(8192);
+
+    // Header
     let _ = writeln!(
         s,
-        "## {}/100 ({}) — {} files in {:.1}s\n",
+        "## {}/100 ({}) — {} files in {:.1}s",
         result.score,
         result.score_label,
         result.source_file_count,
@@ -1128,39 +1077,80 @@ fn format_scan_summary(result: &ScanResult, groups: &[DiagnosticGroup]) -> Strin
     );
     let _ = writeln!(
         s,
-        "{} errors, {} warnings, {} info\n",
-        result.error_count, result.warning_count, result.info_count
+        "{} errors | {} warnings | {} info | {} rules triggered\n",
+        result.error_count,
+        result.warning_count,
+        result.info_count,
+        groups.len()
     );
 
     // Dimension scores
     let _ = writeln!(s, "### Dimensions");
+    let d = &result.dimension_scores;
     let _ = writeln!(
         s,
         "Security: {} | Reliability: {} | Performance: {} | Dependencies: {} | Maintainability: {}\n",
-        result.dimension_scores.security,
-        result.dimension_scores.reliability,
-        result.dimension_scores.performance,
-        result.dimension_scores.dependencies,
-        result.dimension_scores.maintainability
+        d.security, d.reliability, d.performance, d.dependencies, d.maintainability
     );
 
-    // Top issues (errors first, then top warnings)
-    let actionable: Vec<&DiagnosticGroup> = groups
-        .iter()
-        .filter(|g| g.severity != "info")
-        .take(MAX_SUMMARY_ISSUES)
-        .collect();
+    // All diagnostics grouped by severity
+    for &(severity_label, severity_filter) in &[
+        ("Errors", "error"),
+        ("Warnings", "warning"),
+        ("Info", "info"),
+    ] {
+        let severity_groups: Vec<&DiagnosticGroup> = groups
+            .iter()
+            .filter(|g| g.severity == severity_filter)
+            .collect();
 
-    if !actionable.is_empty() {
-        let _ = writeln!(s, "### Top Issues");
-        for g in &actionable {
-            let _ = writeln!(s, "- **{}** ({}) ×{}", g.rule, g.severity, g.count);
+        if severity_groups.is_empty() {
+            continue;
+        }
+
+        let total_count: usize = severity_groups.iter().map(|g| g.count).sum();
+        let _ = writeln!(
+            s,
+            "### {} ({} rules, {} findings)",
+            severity_label,
+            severity_groups.len(),
+            total_count
+        );
+
+        for g in &severity_groups {
+            // Rule line: name (category) ×count — message
+            let _ = writeln!(
+                s,
+                "- `{}` ({}) ×{} — {}",
+                g.rule, g.category, g.count, g.message
+            );
+
+            // Example locations on next line
+            let locations: Vec<String> = g
+                .examples
+                .iter()
+                .map(|ex| {
+                    ex.line.map_or_else(
+                        || ex.file_path.clone(),
+                        |line| format!("{}:{line}", ex.file_path),
+                    )
+                })
+                .collect();
+            if !locations.is_empty() {
+                let _ = writeln!(s, "  → {}", locations.join(", "));
+            }
+
+            // Help text if available
+            if let Some(ref help) = g.help {
+                let _ = writeln!(s, "  fix: {help}");
+            }
         }
         s.push('\n');
     }
 
+    // Skipped passes
     if !result.skipped_passes.is_empty() {
-        let _ = writeln!(s, "### Skipped Passes");
+        let _ = writeln!(s, "### Skipped");
         for pass in &result.skipped_passes {
             let _ = writeln!(s, "- {pass}");
         }
@@ -1641,7 +1631,7 @@ mod tests {
         let scan_result = scan::scan_project(&project_info, &resolved, true, &[], true);
         assert!(scan_result.is_ok(), "scan_project failed: {scan_result:?}");
         let result = scan_result.unwrap();
-        // Verify ScanOutput structure
+        // Verify ScanResult structure
         assert!(result.score <= 100);
         assert!(result.source_file_count > 0);
     }
@@ -1730,7 +1720,7 @@ mod tests {
 
         let total = result.diagnostics.len();
         let grouped = group_diagnostics(&result.diagnostics);
-        let summary = format_scan_summary(&result, &grouped);
+        let report = format_scan_report(&result, &grouped);
 
         // Grouping reduces count
         assert!(
@@ -1749,8 +1739,8 @@ mod tests {
             );
             assert!(g.count > 0);
         }
-        // Summary is non-empty and contains score
-        assert!(summary.contains(&result.score.to_string()));
+        // Report is non-empty and contains score
+        assert!(report.contains(&result.score.to_string()));
         // Sorted: errors before warnings before info
         let severities: Vec<&str> = grouped.iter().map(|g| g.severity.as_str()).collect();
         for window in severities.windows(2) {
