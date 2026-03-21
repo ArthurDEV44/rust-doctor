@@ -17,7 +17,7 @@ pub(super) struct LintEntry {
     pub(super) is_restriction: bool,
 }
 
-/// Registry of 55+ impactful clippy lints with explicit category and severity.
+/// Registry of 75+ impactful clippy lints with explicit category and severity.
 /// Lints NOT in this table inherit clippy's default severity and map to `Style`.
 pub(super) static LINT_REGISTRY: &[LintEntry] = &[
     // ── Error Handling (restriction group — allow-by-default in clippy) ─

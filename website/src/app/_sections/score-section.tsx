@@ -14,10 +14,11 @@ export function ScoreSection() {
         One number. Zero ambiguity.
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed max-w-xl mb-10">
-        Score = 100 &minus; unique error rules &times; 1.5 &minus; unique
-        warning rules &times; 0.75. Counts unique rules violated, not total
-        occurrences. Fix all instances of one issue — the entire penalty
-        disappears.
+        Weighted across 5 dimensions (Security &times;2, Reliability &times;1.5,
+        Maintainability, Performance, Dependencies). Per dimension: 100
+        &minus; errors &times;1.5 &minus; warnings &times;0.75 &minus; info
+        &times;0.25. Counts unique rules, not occurrences — fix one issue
+        entirely and the penalty disappears.
       </p>
 
       <div className="grid grid-cols-3 gap-4">

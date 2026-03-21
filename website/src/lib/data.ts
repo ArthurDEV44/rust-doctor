@@ -7,7 +7,7 @@ export const FAQ_ITEMS = [
   {
     question: "How do I measure Rust code quality?",
     answer:
-      "rust-doctor provides a 0-100 health score for any Rust project. The score is calculated as 100 minus penalties for unique rule violations: 1.5 points per error-level rule, 0.75 per warning-level rule. Scores above 75 indicate a healthy codebase, 50-74 needs work, and below 50 is critical. Run 'npx -y rust-doctor@latest .' at your project root to get your score instantly.",
+      "rust-doctor provides a 0-100 health score for any Rust project. The score is a weighted average across 5 dimensions (Security, Reliability, Maintainability, Performance, Dependencies). Each dimension deducts 1.5 points per unique error rule, 0.75 per warning, and 0.25 per info. Scores above 75 indicate a healthy codebase, 50-74 needs work, and below 50 is critical. Run 'npx -y rust-doctor@latest .' at your project root to get your score instantly.",
   },
   {
     question: "What is a Rust health score?",

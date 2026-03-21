@@ -41,12 +41,13 @@ npx skills add https://github.com/ArthurDEV44/rust-doctor --skill rust-doctor
 
 ## How the score works
 
-The health score starts at 100 and subtracts penalties for each **unique rule** violated:
+The health score is a weighted average across 5 dimensions (Security ×2.0, Reliability ×1.5, Maintainability ×1.0, Performance ×1.0, Dependencies ×1.0). Each dimension starts at 100 and subtracts penalties for each **unique rule** violated:
 
 - Error-level violation: **-1.5 points**
 - Warning-level violation: **-0.75 points**
+- Info-level violation: **-0.25 points**
 
-Fixing all instances of one rule removes the entire penalty. The score is clamped to [0, 100].
+The overall score is the weighted average of all dimension scores, clamped to [0, 100]. Fixing all instances of one rule removes the entire penalty for that rule.
 
 | Score | Label | Meaning |
 |---|---|---|

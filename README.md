@@ -310,9 +310,9 @@ let x = risky_call(); // rust-doctor-disable-line
 | Framework | `axum-handler-not-async` | Warning |
 | Framework | `actix-blocking-handler` | Warning |
 
-### Clippy Lints (55+ with overrides)
+### Clippy Lints (75+ with overrides)
 
-rust-doctor runs `cargo clippy` with pedantic, nursery, and cargo lint groups. 55+ lints have explicit category and severity overrides across: Error Handling, Performance, Security, Correctness, Architecture, Cargo, Async, Style.
+rust-doctor runs `cargo clippy` with pedantic, nursery, and cargo lint groups. 75+ lints have explicit category and severity overrides across: Error Handling, Performance, Security, Correctness, Architecture, Cargo, Async, Style.
 
 ### External Tools (optional, auto-detected)
 
@@ -332,21 +332,24 @@ These tools are optional — rust-doctor gracefully skips any that are missing a
 rust-doctor is available as a library crate:
 
 ```rust
-use rust_doctor::{config, discovery, scan};
+use std::path::Path;
 
-let manifest = std::path::Path::new("/path/to/project/Cargo.toml");
-let project_info = discovery::discover_project(manifest, false)?;
+// Discover the project (finds Cargo.toml, loads config)
+let (dir, info, config) = rust_doctor::discovery::bootstrap_project(
+    Path::new("/path/to/project"), false,
+)?;
 
-let file_config = config::load_file_config(&project_info.root_dir, Some(&project_info.package_metadata));
-let resolved = config::resolve_config_defaults(file_config.as_ref());
+// Resolve config with defaults
+let resolved = rust_doctor::config::resolve_config_defaults(config.as_ref());
 
-let result = scan::scan_project(&project_info, &resolved, false, &[], true)?;
+// Run the scan
+let result = rust_doctor::scan::scan_project(&info, &resolved, false, &[], true)?;
 println!("Score: {}/100 ({})", result.score, result.score_label);
 ```
 
 ## Score Calculation
 
-Score = `100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75)`, clamped to 0–100.
+The score uses weighted dimension scoring across 5 dimensions (Security ×2.0, Reliability ×1.5, Maintainability ×1.0, Performance ×1.0, Dependencies ×1.0). Each dimension is scored as `100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75) - (unique_info_rules × 0.25)`, and the overall score is the weighted average, clamped to 0–100.
 
 The score counts unique rules violated, not occurrences — fixing one instance of `.unwrap()` won't change the score, but eliminating all `.unwrap()` calls removes the penalty entirely.
 
