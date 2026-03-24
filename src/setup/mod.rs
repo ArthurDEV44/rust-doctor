@@ -8,6 +8,7 @@ mod detect;
 mod mcp_config;
 mod skill;
 
+use crate::error::SetupError;
 use detect::DetectedAgent;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::{Confirm, MultiSelect, Select};
@@ -35,11 +36,13 @@ struct InstalledFile {
 ///
 /// Returns an error if interactive prompts fail (e.g., stdin is not a TTY)
 /// or if file I/O fails during installation.
-pub fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run_setup() -> Result<(), SetupError> {
     if !std::io::stderr().is_terminal() {
-        return Err("`rust-doctor setup` requires an interactive terminal.\n\
+        return Err(SetupError::NotInteractive(
+            "`rust-doctor setup` requires an interactive terminal.\n\
              Hint: run this command directly in your shell, not via a script or pipe."
-            .into());
+                .to_string(),
+        ));
     }
 
     print_banner();
@@ -200,7 +203,10 @@ fn select_agents<'a>(
         .items(&labels)
         .interact()?;
 
-    Ok(selections.into_iter().map(|i| &agents[i]).collect())
+    Ok(selections
+        .into_iter()
+        .filter_map(|i| agents.get(i))
+        .collect())
 }
 
 fn install_mcp(agents: &[&DetectedAgent]) -> Vec<InstalledFile> {

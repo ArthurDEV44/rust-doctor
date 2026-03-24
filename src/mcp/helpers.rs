@@ -101,8 +101,8 @@ pub(super) fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGro
 
     let mut result: Vec<DiagnosticGroup> = groups
         .into_iter()
-        .map(|(rule, diags)| {
-            let first = diags[0];
+        .filter_map(|(rule, diags)| {
+            let first = diags.first()?;
             let examples: Vec<DiagnosticExample> = diags
                 .iter()
                 .take(MAX_EXAMPLES_PER_GROUP)
@@ -113,7 +113,7 @@ pub(super) fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGro
                 })
                 .collect();
 
-            DiagnosticGroup {
+            Some(DiagnosticGroup {
                 rule: rule.to_string(),
                 severity: first.severity.to_string(),
                 category: first.category.to_string(),
@@ -121,7 +121,7 @@ pub(super) fn group_diagnostics(diagnostics: &[Diagnostic]) -> Vec<DiagnosticGro
                 message: first.message.clone(),
                 help: diags.iter().find_map(|d| d.help.as_ref()).cloned(),
                 examples,
-            }
+            })
         })
         .collect();
 

@@ -82,6 +82,16 @@ pub enum BootstrapError {
     Discovery(#[from] DiscoveryError),
 }
 
+/// Errors from the interactive setup wizard.
+#[derive(thiserror::Error, Debug)]
+pub enum SetupError {
+    #[error(transparent)]
+    Prompt(#[from] dialoguer::Error),
+
+    #[error("{0}")]
+    NotInteractive(String),
+}
+
 /// Errors from loading the config file (`rust-doctor.toml`).
 #[derive(thiserror::Error, Debug)]
 pub enum ConfigError {
