@@ -9,15 +9,25 @@ MCP (Model Context Protocol) is a standard for connecting AI assistants to exter
 
 ## Setup
 
+### Automatic setup (recommended)
+
+The fastest way to configure the MCP server for any supported agent:
+
+```bash
+rust-doctor setup
+```
+
+The wizard auto-detects installed agents (Claude Code, Cursor, Windsurf), lets you pick which ones to configure, and writes the correct config file automatically.
+
 ### Claude Code
 
 ```bash
 claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp
 ```
 
-### Cursor / VS Code
+### Cursor
 
-Add to your MCP settings:
+Add to `.cursor/mcp.json`:
 
 ```json
 {
@@ -25,6 +35,39 @@ Add to your MCP settings:
     "rust-doctor": {
       "command": "npx",
       "args": ["-y", "rust-doctor", "--mcp"]
+    }
+  }
+}
+```
+
+### Windsurf
+
+Add to `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "rust-doctor": {
+      "command": "npx",
+      "args": ["-y", "rust-doctor", "--mcp"]
+    }
+  }
+}
+```
+
+### VS Code
+
+Add to `.vscode/settings.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "rust-doctor": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "rust-doctor", "--mcp"]
+      }
     }
   }
 }

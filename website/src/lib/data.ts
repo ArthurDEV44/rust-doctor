@@ -22,7 +22,7 @@ export const FAQ_ITEMS = [
   {
     question: "Can I use rust-doctor with AI coding assistants?",
     answer:
-      "Yes. rust-doctor includes a built-in MCP (Model Context Protocol) server. Add it to Claude Code with 'claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp'. It also works with Cursor, VS Code, and any MCP-compatible tool. AI assistants can scan your project, explain rules, and suggest fixes directly.",
+      "Yes. Run 'rust-doctor setup' to auto-detect your AI agent (Claude Code, Cursor, Windsurf) and configure it in one command. Choose CLI + Skills for a skill-based deep analysis workflow, or MCP Server for direct tool integration. Both give your agent full access to scanning, scoring, rule explanations, and fix guidance.",
   },
   {
     question: "How do I add rust-doctor to CI/CD?",
@@ -99,8 +99,8 @@ export const howToJsonLd = {
     {
       "@type": "HowToStep",
       position: 3,
-      name: "Add as MCP server (optional)",
-      text: "For AI-assisted fixes, add rust-doctor as an MCP server: claude mcp add --transport stdio -s user rust-doctor -- npx -y rust-doctor --mcp",
+      name: "Set up AI agent integration (optional)",
+      text: "Run 'rust-doctor setup' to auto-detect your AI agent (Claude Code, Cursor, Windsurf) and configure it for AI-assisted scanning and fixes.",
     },
     {
       "@type": "HowToStep",

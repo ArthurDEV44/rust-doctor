@@ -7,9 +7,25 @@ description: Complete reference for all rust-doctor command-line options and fla
 
 ```bash
 rust-doctor [OPTIONS] [DIRECTORY]
+rust-doctor <COMMAND>
 ```
 
 `DIRECTORY` defaults to `.` (current directory).
+
+## Subcommands
+
+| Command | Description |
+|---|---|
+| `setup` | Interactive setup wizard — auto-detects AI agents (Claude Code, Cursor, Windsurf) and configures MCP server or installs CLI skills |
+
+```bash
+# Launch the setup wizard
+rust-doctor setup
+```
+
+The wizard offers two modes:
+- **CLI + Skills** (default) — installs a SKILL.md that teaches your agent to use rust-doctor deeply
+- **MCP Server** — writes the MCP stdio server config to your agent's config file
 
 ## Options
 

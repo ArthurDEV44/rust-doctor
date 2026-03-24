@@ -27,6 +27,7 @@ https://github.com/user-attachments/assets/6766a5d8-9a47-4eb8-892e-76c1a23eb122
 - **Workspace support**: scan all crates or select specific members
 - **Inline suppression**: `// rust-doctor-disable-next-line <rule>`
 - **Multiple output modes**: terminal, `--json`, `--score`, `--sarif`
+- **Setup wizard**: `rust-doctor setup` — auto-detects Claude Code, Cursor, Windsurf and configures MCP or installs skills in one command
 - **Claude Code skill**: `/rust-doctor` slash command — no MCP setup needed
 - **Library crate**: use rust-doctor programmatically via `lib.rs`
 - **NO_COLOR support**: respects the NO_COLOR environment variable
@@ -117,7 +118,25 @@ rust-doctor --install-deps
 
 # Run as MCP server
 rust-doctor --mcp
+
+# Setup wizard — configure AI agents automatically
+rust-doctor setup
 ```
+
+## AI Agent Setup (recommended)
+
+The fastest way to integrate rust-doctor with your AI coding agent:
+
+```bash
+npx rust-doctor@latest setup
+```
+
+The wizard auto-detects installed agents (Claude Code, Cursor, Windsurf) and lets you choose:
+
+- **CLI + Skills** (default) — installs a `SKILL.md` that teaches your agent to use the rust-doctor CLI with deep analysis capabilities
+- **MCP Server** — configures the `rust-doctor --mcp` stdio server in your agent's config file
+
+The wizard handles detection, configuration, and verification in one command. For manual setup, see the sections below.
 
 ## MCP Server
 
@@ -143,7 +162,13 @@ All tools are read-only (`readOnlyHint: true`).
 
 ### Claude Code
 
-**One-command install:**
+**Automatic setup (recommended):**
+
+```bash
+rust-doctor setup  # detects Claude Code and configures MCP or installs skill
+```
+
+**Or one-command MCP install:**
 
 ```bash
 claude mcp add --transport stdio rust-doctor -- npx -y rust-doctor --mcp
@@ -214,6 +239,21 @@ Add to your `.vscode/settings.json`:
 }
 ```
 
+### Windsurf
+
+Add to your `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "rust-doctor": {
+      "command": "npx",
+      "args": ["-y", "rust-doctor", "--mcp"]
+    }
+  }
+}
+```
+
 ### Other MCP clients
 
 rust-doctor uses stdio transport. Any MCP client that supports stdio can connect by running `rust-doctor --mcp`.
@@ -224,7 +264,13 @@ Built with [rmcp](https://crates.io/crates/rmcp) v1.x (official Rust MCP SDK).
 
 If you prefer slash commands over MCP servers, rust-doctor ships a Claude Code skill.
 
-**Install via npx:**
+**Automatic install (recommended):**
+
+```bash
+rust-doctor setup  # choose "CLI + Skills", select Claude Code
+```
+
+**Or via npx:**
 
 ```bash
 npx skills add https://github.com/ArthurDEV44/rust-doctor --skill rust-doctor
