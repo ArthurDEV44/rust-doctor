@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "rust-doctor"
-version = "0.1.16"
+version = "0.1.17"
 dependencies = [
  "cargo_metadata",
  "clap",
