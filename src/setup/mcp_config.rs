@@ -1,6 +1,6 @@
 //! Write MCP server configuration to agent config files.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::io::{self, Write};
 use std::path::Path;
 use std::{fs, io::ErrorKind};
