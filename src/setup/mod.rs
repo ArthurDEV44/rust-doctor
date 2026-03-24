@@ -140,8 +140,8 @@ fn print_banner() {
 
 fn select_mode() -> Result<Mode, dialoguer::Error> {
     let items = &[
-        "MCP Server \u{2014} Agent calls rust-doctor tools via MCP protocol (recommended)",
-        "CLI + Skills \u{2014} Installs a skill file that guides your agent to use the CLI",
+        "CLI + Skills \u{2014} Installs a skill file that guides your agent to use the CLI (recommended)",
+        "MCP Server \u{2014} Agent calls rust-doctor tools via MCP protocol",
     ];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
@@ -151,9 +151,9 @@ fn select_mode() -> Result<Mode, dialoguer::Error> {
         .interact()?;
 
     Ok(if selection == 0 {
-        Mode::Mcp
-    } else {
         Mode::CliSkills
+    } else {
+        Mode::Mcp
     })
 }
 
@@ -161,6 +161,28 @@ fn select_agents<'a>(
     agents: &'a [DetectedAgent],
     mode: &Mode,
 ) -> Result<Vec<&'a DetectedAgent>, dialoguer::Error> {
+    // If only one agent detected, skip the selection
+    if agents.len() == 1 {
+        return Ok(agents.iter().collect());
+    }
+
+    // Ask: all agents or pick specific ones?
+    let scope_items = &[
+        format!("All detected agents ({})", agents.len()),
+        "Select specific agents...".to_string(),
+    ];
+
+    let scope = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("  Install for which agents?")
+        .items(scope_items)
+        .default(0)
+        .interact()?;
+
+    if scope == 0 {
+        return Ok(agents.iter().collect());
+    }
+
+    // Specific selection: space to toggle, enter to confirm
     let labels: Vec<String> = agents
         .iter()
         .map(|a| {
@@ -173,18 +195,9 @@ fn select_agents<'a>(
         })
         .collect();
 
-    let defaults: Vec<bool> = agents
-        .iter()
-        .map(|a| match mode {
-            Mode::Mcp => true,
-            Mode::CliSkills => a.skills_dir.is_some(),
-        })
-        .collect();
-
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
-        .with_prompt("  Install for which agents?")
+        .with_prompt("  Select agents (space to toggle, enter to confirm)")
         .items(&labels)
-        .defaults(&defaults)
         .interact()?;
 
     Ok(selections.into_iter().map(|i| &agents[i]).collect())
@@ -326,7 +339,7 @@ fn print_recap(installed: &[InstalledFile], mode: &Mode) {
             eprintln!("  Your agent can now use rust-doctor via CLI commands.");
             eprintln!(
                 "  Try asking: {}",
-                "\"Scan this project for health issues\""
+                "\"Run rust-doctor on this project\""
                     .if_supports_color(Stream::Stderr, |t| t.dimmed())
             );
         }
