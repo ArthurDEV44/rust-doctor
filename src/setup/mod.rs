@@ -208,6 +208,22 @@ fn install_mcp(agents: &[&DetectedAgent]) -> Vec<InstalledFile> {
     let mut installed = Vec::new();
 
     for agent in agents {
+        if agent.mcp_already_configured {
+            eprintln!(
+                "  {} already has rust-doctor MCP configured.",
+                agent.name.if_supports_color(Stream::Stderr, |t| t.cyan())
+            );
+            let replace = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("  Replace with new configuration? (recommended)")
+                .default(true)
+                .interact()
+                .unwrap_or(false);
+            if !replace {
+                eprintln!("  Skipped.");
+                continue;
+            }
+        }
+
         eprint!(
             "  Configuring {} ... ",
             agent.name.if_supports_color(Stream::Stderr, |t| t.cyan())
@@ -248,6 +264,22 @@ fn install_skills(agents: &[&DetectedAgent]) -> Vec<InstalledFile> {
             );
             continue;
         };
+
+        if agent.skill_already_installed {
+            eprintln!(
+                "  {} already has the rust-doctor skill installed.",
+                agent.name.if_supports_color(Stream::Stderr, |t| t.cyan())
+            );
+            let replace = Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("  Replace with latest version? (recommended)")
+                .default(true)
+                .interact()
+                .unwrap_or(false);
+            if !replace {
+                eprintln!("  Skipped.");
+                continue;
+            }
+        }
 
         eprint!(
             "  Installing skill for {} ... ",
