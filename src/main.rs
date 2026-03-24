@@ -2,13 +2,24 @@
 #![allow(clippy::multiple_crate_versions)]
 
 use clap::Parser;
-use rust_doctor::cli::{Cli, FailOn};
+use rust_doctor::cli::{Cli, Command, FailOn};
 use rust_doctor::diagnostics::ScanResult;
 use rust_doctor::{config, deps, discovery, fixer, output, plan, sarif, scan};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    // Setup wizard
+    if matches!(cli.command, Some(Command::Setup)) {
+        return match rust_doctor::setup::run_setup() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Error: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     // Install external tools and exit
     if cli.install_deps {

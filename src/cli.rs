@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Diagnose your Rust project's health with a single command.
@@ -7,8 +7,11 @@ use std::path::PathBuf;
 /// architecture, and dependency issues, producing a 0-100 health score
 /// with actionable diagnostics.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, args_conflicts_with_subcommands = true)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Directory to scan (defaults to current directory)
     #[arg(default_value = ".")]
     pub directory: PathBuf,
@@ -97,6 +100,13 @@ impl std::fmt::Display for FailOn {
             Self::None => write!(f, "none"),
         }
     }
+}
+
+/// Subcommands (optional — default behavior is scanning).
+#[derive(Subcommand, Debug, Clone)]
+pub enum Command {
+    /// Interactive setup wizard — configure rust-doctor for your AI coding agent
+    Setup,
 }
 
 #[cfg(test)]
@@ -238,6 +248,12 @@ mod tests {
     fn test_install_deps_flag() {
         let cli = Cli::try_parse_from(["rust-doctor", "--install-deps"]).unwrap();
         assert!(cli.install_deps);
+    }
+
+    #[test]
+    fn test_setup_subcommand() {
+        let cli = Cli::try_parse_from(["rust-doctor", "setup"]).unwrap();
+        assert!(matches!(cli.command, Some(Command::Setup)));
     }
 
     #[test]

@@ -95,6 +95,8 @@ pub mod plan;
 pub mod sarif;
 /// Top-level scan pipeline that orchestrates all analysis passes.
 pub mod scan;
+/// Interactive setup wizard for AI agent integration.
+pub mod setup;
 
 // Internal implementation modules
 pub(crate) mod cache;
