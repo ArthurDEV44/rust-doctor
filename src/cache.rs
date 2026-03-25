@@ -80,31 +80,26 @@ impl ScanCache {
     }
 
     /// Check whether the cached entry for `path` is still fresh (i.e. the
-    /// content hash matches).
-    pub fn is_fresh(&self, path: &Path, content: &str) -> bool {
-        self.files
-            .get(path)
-            .is_some_and(|entry| entry.hash == hash_content(content))
+    /// content hash matches). Returns the computed hash for reuse by callers.
+    pub fn is_fresh_with_hash(&self, path: &Path, content: &str) -> (bool, String) {
+        let hash = hash_content(content);
+        let fresh = self.files.get(path).is_some_and(|entry| entry.hash == hash);
+        (fresh, hash)
     }
 
     /// Return cached diagnostics for `path` if the entry exists.
     ///
-    /// Callers should verify freshness with [`is_fresh`](Self::is_fresh) first.
+    /// Callers should verify freshness with [`is_fresh_with_hash`](Self::is_fresh_with_hash) first.
     pub fn get_cached_diagnostics(&self, path: &Path) -> Option<&[Diagnostic]> {
         self.files
             .get(path)
             .map(|entry| entry.diagnostics.as_slice())
     }
 
-    /// Insert or update the cache entry for `path`.
-    pub fn update(&mut self, path: &Path, content: &str, diagnostics: Vec<Diagnostic>) {
-        self.files.insert(
-            path.to_path_buf(),
-            FileEntry {
-                hash: hash_content(content),
-                diagnostics,
-            },
-        );
+    /// Insert or update the cache entry for `path` with a pre-computed hash.
+    pub fn update_with_hash(&mut self, path: &Path, hash: String, diagnostics: Vec<Diagnostic>) {
+        self.files
+            .insert(path.to_path_buf(), FileEntry { hash, diagnostics });
     }
 }
 
@@ -170,7 +165,11 @@ mod tests {
 
         let mut cache = ScanCache::new(config_hash.clone());
         let diag = sample_diagnostic("src/main.rs", "unwrap-in-production");
-        cache.update(Path::new("src/main.rs"), "fn main() {}", vec![diag]);
+        cache.update_with_hash(
+            Path::new("src/main.rs"),
+            hash_content("fn main() {}"),
+            vec![diag],
+        );
 
         cache.save(dir.path());
 
@@ -196,9 +195,13 @@ mod tests {
         let mut cache = ScanCache::new(config_hash);
 
         let diag = sample_diagnostic("src/main.rs", "test-rule");
-        cache.update(Path::new("src/main.rs"), content, vec![diag]);
+        cache.update_with_hash(Path::new("src/main.rs"), hash_content(content), vec![diag]);
 
-        assert!(cache.is_fresh(Path::new("src/main.rs"), content));
+        assert!(
+            cache
+                .is_fresh_with_hash(Path::new("src/main.rs"), content)
+                .0
+        );
 
         let cached = cache.get_cached_diagnostics(Path::new("src/main.rs"));
         assert!(cached.is_some());
@@ -215,14 +218,22 @@ mod tests {
         let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let mut cache = ScanCache::new(config_hash);
 
-        cache.update(
+        cache.update_with_hash(
             Path::new("src/main.rs"),
-            original,
+            hash_content(original),
             vec![sample_diagnostic("src/main.rs", "r1")],
         );
 
-        assert!(cache.is_fresh(Path::new("src/main.rs"), original));
-        assert!(!cache.is_fresh(Path::new("src/main.rs"), modified));
+        assert!(
+            cache
+                .is_fresh_with_hash(Path::new("src/main.rs"), original)
+                .0
+        );
+        assert!(
+            !cache
+                .is_fresh_with_hash(Path::new("src/main.rs"), modified)
+                .0
+        );
     }
 
     // ── Test 4: Config change invalidates entire cache ──────────────────
@@ -234,9 +245,9 @@ mod tests {
         let hash_v2 = compute_config_hash(&["rule-b".to_string()], &[], &[], &[]);
 
         let mut cache = ScanCache::new(hash_v1.clone());
-        cache.update(
+        cache.update_with_hash(
             Path::new("src/main.rs"),
-            "fn main() {}",
+            hash_content("fn main() {}"),
             vec![sample_diagnostic("src/main.rs", "r1")],
         );
         cache.save(dir.path());
@@ -331,9 +342,9 @@ mod tests {
         let config_hash = compute_config_hash(&[], &[], &[], &[]);
         let mut cache = ScanCache::new(config_hash);
 
-        cache.update(
+        cache.update_with_hash(
             Path::new("src/lib.rs"),
-            "v1",
+            hash_content("v1"),
             vec![sample_diagnostic("src/lib.rs", "rule-a")],
         );
         assert_eq!(
@@ -344,9 +355,9 @@ mod tests {
             1
         );
 
-        cache.update(
+        cache.update_with_hash(
             Path::new("src/lib.rs"),
-            "v2",
+            hash_content("v2"),
             vec![
                 sample_diagnostic("src/lib.rs", "rule-b"),
                 sample_diagnostic("src/lib.rs", "rule-c"),

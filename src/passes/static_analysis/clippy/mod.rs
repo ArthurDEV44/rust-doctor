@@ -94,18 +94,8 @@ impl AnalysisPass for ClippyPass {
     }
 }
 
-/// Check if `cargo clippy` is available. Result is cached for the process lifetime.
 fn is_clippy_available() -> bool {
-    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        Command::new("cargo")
-            .args(["clippy", "--version"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
+    crate::process::is_cargo_subcommand_available("clippy")
 }
 
 /// Build the full list of `-W` flags for clippy, including group-level
@@ -282,6 +272,10 @@ fn build_stderr_fallback(stderr: std::process::ChildStderr) -> Option<Diagnostic
 /// Remove restriction-group lints originating from test code and
 /// print_stdout/print_stderr lints from binary crates.
 fn filter_test_and_binary_lints(diagnostics: &mut Vec<Diagnostic>, project_root: &Path) {
+    // Cache file contents to avoid re-reading the same file for every diagnostic
+    let mut file_cache: std::collections::HashMap<PathBuf, String> =
+        std::collections::HashMap::new();
+
     // Drop restriction-group lints from test code
     diagnostics.retain(|d| {
         if !is_restriction_lint(&d.rule) {
@@ -297,10 +291,11 @@ fn filter_test_and_binary_lints(diagnostics: &mut Vec<Diagnostic>, project_root:
             } else {
                 project_root.join(&d.file_path)
             };
-            if let Ok(content) = std::fs::read_to_string(&abs_path) {
-                if is_line_in_test_module(&content, line) {
-                    return false;
-                }
+            let content = file_cache
+                .entry(abs_path.clone())
+                .or_insert_with(|| std::fs::read_to_string(&abs_path).unwrap_or_default());
+            if is_line_in_test_module(content, line) {
+                return false;
             }
         }
         true

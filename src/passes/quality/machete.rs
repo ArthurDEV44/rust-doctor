@@ -31,18 +31,8 @@ impl AnalysisPass for MachetePass {
     }
 }
 
-/// Check if `cargo machete` is available. Result is cached for the process lifetime.
 fn is_machete_available() -> bool {
-    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        Command::new("cargo")
-            .args(["machete", "--version"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
+    process::is_cargo_subcommand_available("machete")
 }
 
 fn run_machete(project_root: &Path) -> Result<Vec<Diagnostic>, String> {

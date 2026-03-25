@@ -196,3 +196,95 @@ const fn check_fail_on_gate(scan_result: &ScanResult, fail_on: FailOn) -> bool {
         FailOn::None => false,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rust_doctor::diagnostics::{DimensionScores, ScoreLabel};
+    use std::time::Duration;
+
+    fn make_scan_result(score: u32, errors: usize, warnings: usize, infos: usize) -> ScanResult {
+        ScanResult {
+            diagnostics: vec![],
+            score,
+            score_label: ScoreLabel::Great,
+            dimension_scores: DimensionScores {
+                security: 100,
+                reliability: 100,
+                maintainability: 100,
+                performance: 100,
+                dependencies: 100,
+            },
+            source_file_count: 10,
+            elapsed: Duration::from_secs(1),
+            skipped_passes: vec![],
+            error_count: errors,
+            warning_count: warnings,
+            info_count: infos,
+        }
+    }
+
+    // --- check_score_gate ---
+
+    #[test]
+    fn test_score_gate_below_threshold_fails() {
+        let result = make_scan_result(75, 0, 0, 0);
+        assert!(check_score_gate(&result, Some(80)).is_some());
+    }
+
+    #[test]
+    fn test_score_gate_above_threshold_passes() {
+        let result = make_scan_result(85, 0, 0, 0);
+        assert!(check_score_gate(&result, Some(80)).is_none());
+    }
+
+    #[test]
+    fn test_score_gate_exact_threshold_passes() {
+        let result = make_scan_result(80, 0, 0, 0);
+        assert!(check_score_gate(&result, Some(80)).is_none());
+    }
+
+    #[test]
+    fn test_score_gate_no_threshold_passes() {
+        let result = make_scan_result(10, 0, 0, 0);
+        assert!(check_score_gate(&result, None).is_none());
+    }
+
+    // --- check_fail_on_gate ---
+
+    #[test]
+    fn test_fail_on_error_with_errors() {
+        let result = make_scan_result(50, 1, 0, 0);
+        assert!(check_fail_on_gate(&result, FailOn::Error));
+    }
+
+    #[test]
+    fn test_fail_on_error_without_errors() {
+        let result = make_scan_result(50, 0, 5, 3);
+        assert!(!check_fail_on_gate(&result, FailOn::Error));
+    }
+
+    #[test]
+    fn test_fail_on_warning_with_warnings() {
+        let result = make_scan_result(50, 0, 1, 0);
+        assert!(check_fail_on_gate(&result, FailOn::Warning));
+    }
+
+    #[test]
+    fn test_fail_on_warning_with_errors_too() {
+        let result = make_scan_result(50, 1, 0, 0);
+        assert!(check_fail_on_gate(&result, FailOn::Warning));
+    }
+
+    #[test]
+    fn test_fail_on_info_with_info() {
+        let result = make_scan_result(50, 0, 0, 1);
+        assert!(check_fail_on_gate(&result, FailOn::Info));
+    }
+
+    #[test]
+    fn test_fail_on_none_never_fails() {
+        let result = make_scan_result(50, 10, 20, 30);
+        assert!(!check_fail_on_gate(&result, FailOn::None));
+    }
+}

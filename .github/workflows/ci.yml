@@ -39,5 +39,11 @@ jobs:
       - name: Security audit
         run: cargo audit
 
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Supply-chain check (cargo-deny)
+        run: cargo deny check
+
       - name: Publish dry-run
         run: cargo publish --dry-run

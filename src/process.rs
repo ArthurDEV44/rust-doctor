@@ -1,9 +1,39 @@
-use std::process::Child;
+use std::collections::HashMap;
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::Duration;
+
+/// Check if a cargo subcommand (e.g. "audit", "deny", "clippy") is installed.
+/// Results are cached for the process lifetime.
+pub fn is_cargo_subcommand_available(name: &str) -> bool {
+    static CACHE: LazyLock<Mutex<HashMap<String, bool>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+
+    let cache = CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(&result) = cache.get(name) {
+        return result;
+    }
+    drop(cache);
+
+    let available = Command::new("cargo")
+        .args([name, "--version"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(name.to_string(), available);
+    available
+}
 
 /// Outcome of a subprocess run with a timeout watchdog.
 pub struct ProcessOutput {

@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+echo "Running pre-commit checks..."
+
+# Format check (fast, no compilation needed)
+if ! cargo fmt --check; then
+    echo "ERROR: cargo fmt --check failed. Run 'cargo fmt' to fix formatting."
+    exit 1
+fi
+
+# Lint check (matches CI flags)
+# On a cold cache this can take 2-5 minutes. Bypass with: git commit --no-verify
+if ! cargo clippy --all-targets -- -W clippy::all -W clippy::pedantic -W clippy::nursery -D warnings; then
+    echo "ERROR: cargo clippy failed. Fix the warnings above before committing."
+    exit 1
+fi
+
+echo "Pre-commit checks passed."

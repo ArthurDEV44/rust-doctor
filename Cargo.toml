@@ -1,6 +1,6 @@
 [package]
 name = "rust-doctor"
-version = "0.1.19"
+version = "0.1.20"
 edition = "2024"
 rust-version = "1.85"
 description = "A unified code health tool for Rust — scan, score, and fix your codebase"
@@ -37,10 +37,13 @@ mcp = ["dep:rmcp", "dep:tokio", "dep:schemars"]
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
 must_use_candidate = "allow"
 module_name_repetitions = "allow"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+option_if_let_else = "allow"
+significant_drop_tightening = "allow"
 
 [profile.release]
 strip = true

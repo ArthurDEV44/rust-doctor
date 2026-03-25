@@ -3,3 +3,11 @@
 rust-doctor-video/node_modules/
 rust-doctor-video/out/
 .meta/
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+credentials.*
+secrets.*

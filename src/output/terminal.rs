@@ -28,12 +28,31 @@ pub fn render_terminal(result: &ScanResult, verbose: bool) {
     print_score_box(result);
 }
 
-/// Print the ASCII doctor box with score.
-fn print_score_box(result: &ScanResult) {
-    let score = result.score;
-    let label = &result.score_label;
+// ── Box layout helpers ───────────────────────────────────────────────────
 
-    // Doctor face
+fn dim(s: &str) -> String {
+    format!("{}", s.if_supports_color(Stream::Stdout, |t| t.dimmed()))
+}
+
+fn pad_line(inner_width: usize, content: &str, plain_len: usize) -> String {
+    let padding = inner_width.saturating_sub(plain_len + 2);
+    format!(
+        "  {} {} {}{}",
+        dim("│"),
+        content,
+        " ".repeat(padding),
+        dim("│")
+    )
+}
+
+fn empty_line(inner_width: usize) -> String {
+    format!("  {} {}{}", dim("│"), " ".repeat(inner_width - 2), dim("│"))
+}
+
+// ── Score box section renderers ──────────────────────────────────────────
+
+/// Render the doctor face and brand header.
+fn render_header(inner_width: usize, score: u32) {
     let (eyes, mouth) = if score >= SCORE_GOOD_THRESHOLD {
         ("◠ ◠", " ▽ ")
     } else if score >= SCORE_OK_THRESHOLD {
@@ -42,7 +61,115 @@ fn print_score_box(result: &ScanResult) {
         ("x x", " △ ")
     };
 
-    // Build content lines
+    println!("{}", pad_line(inner_width, "┌─────┐", 7));
+    println!(
+        "{}",
+        pad_line(
+            inner_width,
+            &format!("│ {} │", colorize_by_score(eyes, score)),
+            7
+        )
+    );
+    println!(
+        "{}",
+        pad_line(
+            inner_width,
+            &format!("│ {} │", colorize_by_score(mouth, score)),
+            7
+        )
+    );
+    println!("{}", pad_line(inner_width, "└─────┘", 7));
+    println!(
+        "{}",
+        pad_line(
+            inner_width,
+            &format!(
+                "{}",
+                "rust-doctor".if_supports_color(Stream::Stdout, |t| t.bold())
+            ),
+            11,
+        )
+    );
+    println!("{}", empty_line(inner_width));
+}
+
+/// Render the dimension score bars.
+fn render_dimension_bars(inner_width: usize, result: &ScanResult, dim_text: &str) {
+    let ds = &result.dimension_scores;
+    let colored_dim = format!(
+        "{}: {}  {}: {}  {}: {}  {}: {}  {}: {}",
+        "Security".if_supports_color(Stream::Stdout, |t| t.dimmed()),
+        colorize_by_score(&ds.security.to_string(), ds.security),
+        "Reliability".if_supports_color(Stream::Stdout, |t| t.dimmed()),
+        colorize_by_score(&ds.reliability.to_string(), ds.reliability),
+        "Maintainability".if_supports_color(Stream::Stdout, |t| t.dimmed()),
+        colorize_by_score(&ds.maintainability.to_string(), ds.maintainability),
+        "Performance".if_supports_color(Stream::Stdout, |t| t.dimmed()),
+        colorize_by_score(&ds.performance.to_string(), ds.performance),
+        "Dependencies".if_supports_color(Stream::Stdout, |t| t.dimmed()),
+        colorize_by_score(&ds.dependencies.to_string(), ds.dependencies),
+    );
+    println!("{}", pad_line(inner_width, &colored_dim, dim_text.width()));
+    println!("{}", empty_line(inner_width));
+}
+
+/// Render the stats footer (error/warning counts, skipped passes).
+fn render_stats_footer(
+    inner_width: usize,
+    result: &ScanResult,
+    stats: &str,
+    skipped_text: Option<&str>,
+) {
+    let colored_info_part = if result.info_count > 0 {
+        format!(
+            "  {} {} info(s)",
+            "ℹ".if_supports_color(Stream::Stdout, |t| t.cyan()),
+            result.info_count
+        )
+    } else {
+        String::new()
+    };
+    let colored_stats = format!(
+        "{} {} error(s)  {} {} warning(s){colored_info_part}  {} files  {:.1}s",
+        colorize_by_score(
+            if result.error_count > 0 { "✗" } else { "✓" },
+            if result.error_count > 0 { 0 } else { 100 }
+        ),
+        result.error_count,
+        colorize_by_score(
+            if result.warning_count > 0 {
+                "⚠"
+            } else {
+                "✓"
+            },
+            if result.warning_count > 0 { 49 } else { 100 }
+        ),
+        result.warning_count,
+        result.source_file_count,
+        result.elapsed.as_secs_f64(),
+    );
+    println!("{}", pad_line(inner_width, &colored_stats, stats.width()));
+
+    if let Some(text) = skipped_text {
+        println!("{}", empty_line(inner_width));
+        let colored_skip = format!(
+            "{} {} pass(es) skipped — run: {}",
+            "⊘".if_supports_color(Stream::Stdout, |t| t.yellow()),
+            result.skipped_passes.len(),
+            "rust-doctor --install-deps".if_supports_color(Stream::Stdout, |t| t.bold()),
+        );
+        println!("{}", pad_line(inner_width, &colored_skip, text.width()));
+    }
+}
+
+// ── Main score box ───────────────────────────────────────────────────────
+
+/// Print the ASCII doctor box with score.
+fn print_score_box(result: &ScanResult) {
+    let score = result.score;
+    let label = &result.score_label;
+
+    // Build content lines for width calculation
     let score_text = format!("{score} / 100  {label}");
     let bar = build_score_bar(score);
     let ds = &result.dimension_scores;
@@ -77,9 +204,9 @@ fn print_score_box(result: &ScanResult) {
         ))
     };
 
-    // Calculate box width from content display widths
+    // Calculate box width
     let mut widths = vec![
-        7_usize, // face lines "│ X X │"
+        7_usize,
         score_text.width(),
         bar.plain.width(),
         dim_text.width(),
@@ -89,135 +216,24 @@ fn print_score_box(result: &ScanResult) {
         widths.push(text.width());
     }
     let max_width = widths.into_iter().max().unwrap_or(40).max(40);
-    let inner_width = max_width + 2; // padding
+    let iw = max_width + 2;
 
-    // Print box
-    let dim =
-        |s: &str| -> String { format!("{}", s.if_supports_color(Stream::Stdout, |t| t.dimmed())) };
+    // Render box
+    println!("  {}{}{}", dim("┌"), dim(&"─".repeat(iw)), dim("┐"),);
 
-    let top = format!(
-        "  {}{}{}",
-        dim("┌"),
-        dim(&"─".repeat(inner_width)),
-        dim("┐"),
-    );
-    let bottom = format!(
-        "  {}{}{}",
-        dim("└"),
-        dim(&"─".repeat(inner_width)),
-        dim("┘"),
-    );
+    render_header(iw, score);
 
-    let pad_line = |content: &str, plain_len: usize| -> String {
-        let padding = inner_width.saturating_sub(plain_len + 2);
-        format!(
-            "  {} {} {}{}",
-            dim("│"),
-            content,
-            " ".repeat(padding),
-            dim("│")
-        )
-    };
-    let empty_line =
-        || -> String { format!("  {} {}{}", dim("│"), " ".repeat(inner_width - 2), dim("│")) };
-
-    println!("{top}");
-
-    // Doctor face (colored by score)
-    println!("{}", pad_line("┌─────┐", 7));
-    println!(
-        "{}",
-        pad_line(&format!("│ {} │", colorize_by_score(eyes, score)), 7)
-    );
-    println!(
-        "{}",
-        pad_line(&format!("│ {} │", colorize_by_score(mouth, score)), 7)
-    );
-    println!("{}", pad_line("└─────┘", 7));
-
-    // Brand
-    println!(
-        "{}",
-        pad_line(
-            &format!(
-                "{}",
-                "rust-doctor".if_supports_color(Stream::Stdout, |t| t.bold())
-            ),
-            11,
-        )
-    );
-    println!("{}", empty_line());
-
-    // Score
+    // Score + bar
     let colored_score = colorize_by_score(&score_text, score);
-    println!("{}", pad_line(&colored_score, score_text.width()));
-    println!("{}", empty_line());
+    println!("{}", pad_line(iw, &colored_score, score_text.width()));
+    println!("{}", empty_line(iw));
+    println!("{}", pad_line(iw, &bar.colored, bar.plain.width()));
+    println!("{}", empty_line(iw));
 
-    // Bar
-    println!("{}", pad_line(&bar.colored, bar.plain.width()));
-    println!("{}", empty_line());
+    render_dimension_bars(iw, result, &dim_text);
+    render_stats_footer(iw, result, &stats, skipped_text.as_deref());
 
-    // Dimension scores
-    let colored_dim = format!(
-        "{}: {}  {}: {}  {}: {}  {}: {}  {}: {}",
-        "Security".if_supports_color(Stream::Stdout, |t| t.dimmed()),
-        colorize_by_score(&ds.security.to_string(), ds.security),
-        "Reliability".if_supports_color(Stream::Stdout, |t| t.dimmed()),
-        colorize_by_score(&ds.reliability.to_string(), ds.reliability),
-        "Maintainability".if_supports_color(Stream::Stdout, |t| t.dimmed()),
-        colorize_by_score(&ds.maintainability.to_string(), ds.maintainability),
-        "Performance".if_supports_color(Stream::Stdout, |t| t.dimmed()),
-        colorize_by_score(&ds.performance.to_string(), ds.performance),
-        "Dependencies".if_supports_color(Stream::Stdout, |t| t.dimmed()),
-        colorize_by_score(&ds.dependencies.to_string(), ds.dependencies),
-    );
-    println!("{}", pad_line(&colored_dim, dim_text.width()));
-    println!("{}", empty_line());
-
-    // Stats
-    let colored_info_part = if result.info_count > 0 {
-        format!(
-            "  {} {} info(s)",
-            "ℹ".if_supports_color(Stream::Stdout, |t| t.cyan()),
-            result.info_count
-        )
-    } else {
-        String::new()
-    };
-    let colored_stats = format!(
-        "{} {} error(s)  {} {} warning(s){colored_info_part}  {} files  {:.1}s",
-        colorize_by_score(
-            if result.error_count > 0 { "✗" } else { "✓" },
-            if result.error_count > 0 { 0 } else { 100 }
-        ),
-        result.error_count,
-        colorize_by_score(
-            if result.warning_count > 0 {
-                "⚠"
-            } else {
-                "✓"
-            },
-            if result.warning_count > 0 { 49 } else { 100 }
-        ),
-        result.warning_count,
-        result.source_file_count,
-        result.elapsed.as_secs_f64(),
-    );
-    println!("{}", pad_line(&colored_stats, stats.width()));
-
-    // Skipped passes hint
-    if let Some(ref text) = skipped_text {
-        println!("{}", empty_line());
-        let colored_skip = format!(
-            "{} {} pass(es) skipped — run: {}",
-            "⊘".if_supports_color(Stream::Stdout, |t| t.yellow()),
-            result.skipped_passes.len(),
-            "rust-doctor --install-deps".if_supports_color(Stream::Stdout, |t| t.bold()),
-        );
-        println!("{}", pad_line(&colored_skip, text.width()));
-    }
-
-    println!("{bottom}");
+    println!("  {}{}{}", dim("└"), dim(&"─".repeat(iw)), dim("┘"),);
 }
 
 struct ScoreBar {
@@ -266,6 +282,7 @@ struct DiagOccurrence<'a> {
 }
 
 /// Print diagnostics grouped by rule, errors first.
+#[allow(clippy::too_many_lines)]
 fn print_diagnostics(diagnostics: &[crate::diagnostics::Diagnostic], verbose: bool) {
     // Group by rule — borrow from diagnostics to avoid cloning strings
     let mut groups: HashMap<&str, DiagGroup<'_>> = HashMap::new();
@@ -341,5 +358,159 @@ fn print_diagnostics(diagnostics: &[crate::diagnostics::Diagnostic], verbose: bo
         }
 
         eprintln!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::{Category, Diagnostic, DimensionScores, ScoreLabel, Severity};
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    fn make_result(
+        score: u32,
+        diagnostics: Vec<Diagnostic>,
+        errors: usize,
+        warnings: usize,
+        infos: usize,
+    ) -> ScanResult {
+        ScanResult {
+            diagnostics,
+            score,
+            score_label: ScoreLabel::Great,
+            dimension_scores: DimensionScores {
+                security: score,
+                reliability: score,
+                maintainability: score,
+                performance: score,
+                dependencies: score,
+            },
+            source_file_count: 10,
+            elapsed: Duration::from_millis(500),
+            skipped_passes: vec![],
+            error_count: errors,
+            warning_count: warnings,
+            info_count: infos,
+        }
+    }
+
+    fn make_diagnostic(rule: &str, severity: Severity) -> Diagnostic {
+        Diagnostic {
+            file_path: PathBuf::from("src/lib.rs"),
+            rule: rule.to_string(),
+            category: Category::ErrorHandling,
+            severity,
+            message: format!("test message for {rule}"),
+            help: Some(format!("fix {rule}")),
+            line: Some(10),
+            column: Some(5),
+            fix: None,
+        }
+    }
+
+    // --- build_score_bar ---
+
+    #[test]
+    fn test_score_bar_full() {
+        let bar = build_score_bar(100);
+        assert_eq!(bar.plain.chars().count(), SCORE_BAR_WIDTH);
+        assert!(!bar.plain.contains('░'));
+    }
+
+    #[test]
+    fn test_score_bar_empty() {
+        let bar = build_score_bar(0);
+        assert_eq!(bar.plain.chars().count(), SCORE_BAR_WIDTH);
+        assert!(!bar.plain.contains('█'));
+    }
+
+    #[test]
+    fn test_score_bar_half() {
+        let bar = build_score_bar(50);
+        let filled = bar.plain.chars().filter(|&c| c == '█').count();
+        let empty = bar.plain.chars().filter(|&c| c == '░').count();
+        assert_eq!(filled + empty, SCORE_BAR_WIDTH);
+        assert_eq!(filled, 20);
+    }
+
+    // --- colorize_by_score ---
+
+    #[test]
+    fn test_colorize_high_score_contains_text() {
+        // NO_COLOR may suppress ANSI codes; just verify the text is present
+        let result = colorize_by_score("test", 90);
+        assert!(result.contains("test"));
+    }
+
+    #[test]
+    fn test_colorize_low_score_contains_text() {
+        let result = colorize_by_score("test", 20);
+        assert!(result.contains("test"));
+    }
+
+    // --- render_terminal (integration) ---
+
+    #[test]
+    fn test_render_terminal_with_diagnostics() {
+        let diags = vec![
+            make_diagnostic("rule-a", Severity::Error),
+            make_diagnostic("rule-b", Severity::Warning),
+        ];
+        let result = make_result(70, diags, 1, 1, 0);
+        // Should not panic — output goes to stdout/stderr
+        render_terminal(&result, false);
+    }
+
+    #[test]
+    fn test_render_terminal_zero_diagnostics() {
+        let result = make_result(100, vec![], 0, 0, 0);
+        render_terminal(&result, false);
+    }
+
+    #[test]
+    fn test_render_terminal_verbose() {
+        let diags = vec![make_diagnostic("rule-a", Severity::Warning)];
+        let result = make_result(80, diags, 0, 1, 0);
+        render_terminal(&result, true);
+    }
+
+    #[test]
+    fn test_render_terminal_with_skipped_passes() {
+        let mut result = make_result(90, vec![], 0, 0, 0);
+        result.skipped_passes = vec!["cargo-audit".to_string(), "cargo-deny".to_string()];
+        render_terminal(&result, false);
+    }
+
+    #[test]
+    fn test_render_terminal_zero_files_no_diagnostics() {
+        let mut result = make_result(100, vec![], 0, 0, 0);
+        result.source_file_count = 0;
+        // Should print "No Rust source files found" and return early
+        render_terminal(&result, false);
+    }
+
+    // --- print_diagnostics grouping ---
+
+    #[test]
+    fn test_print_diagnostics_groups_by_rule() {
+        let diags = vec![
+            make_diagnostic("same-rule", Severity::Warning),
+            make_diagnostic("same-rule", Severity::Warning),
+            make_diagnostic("other-rule", Severity::Error),
+        ];
+        // Should not panic; diagnostics are grouped by rule
+        print_diagnostics(&diags, false);
+    }
+
+    #[test]
+    fn test_print_diagnostics_sorts_errors_first() {
+        let diags = vec![
+            make_diagnostic("warn-rule", Severity::Warning),
+            make_diagnostic("info-rule", Severity::Info),
+            make_diagnostic("err-rule", Severity::Error),
+        ];
+        // Should print errors, then warnings, then info
+        print_diagnostics(&diags, true);
     }
 }

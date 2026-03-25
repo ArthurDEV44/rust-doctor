@@ -5,6 +5,10 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+fn is_cargo_audit_available() -> bool {
+    process::is_cargo_subcommand_available("audit")
+}
+
 const AUDIT_TIMEOUT_SECS: u64 = 60;
 const MAX_OUTPUT_BYTES: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -32,20 +36,6 @@ impl AnalysisPass for AuditPass {
             message,
         })
     }
-}
-
-/// Check if `cargo audit` is available. Result is cached for the process lifetime.
-fn is_cargo_audit_available() -> bool {
-    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        Command::new("cargo")
-            .args(["audit", "--version"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
 }
 
 fn run_audit(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, String> {

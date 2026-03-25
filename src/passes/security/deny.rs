@@ -36,16 +36,7 @@ impl AnalysisPass for DenyPass {
 
 /// Check if `cargo deny` is available. Result is cached for the process lifetime.
 pub fn is_cargo_deny_available() -> bool {
-    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        Command::new("cargo")
-            .args(["deny", "--version"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
+    process::is_cargo_subcommand_available("deny")
 }
 
 fn run_deny(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, String> {

@@ -162,15 +162,22 @@ impl RuleEngine {
             })
             .collect();
 
-        // Partition into fresh (cache hit) and stale (need scanning) files
-        let (fresh, stale): (Vec<_>, Vec<_>) =
-            file_contents.iter().partition(|(file_path, content)| {
-                let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
-                scan_cache.is_fresh(rel_path, content)
-            });
+        // Partition into fresh (cache hit) and stale (need scanning) files,
+        // keeping the pre-computed hash for stale files to avoid double hashing.
+        let mut fresh_files = Vec::new();
+        let mut stale_files = Vec::new();
+        for (file_path, content) in &file_contents {
+            let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
+            let (is_fresh, hash) = scan_cache.is_fresh_with_hash(rel_path, content);
+            if is_fresh {
+                fresh_files.push((file_path, content));
+            } else {
+                stale_files.push((file_path, content, hash));
+            }
+        }
 
         // Collect cached diagnostics for fresh files
-        let mut all_diagnostics: Vec<Diagnostic> = fresh
+        let mut all_diagnostics: Vec<Diagnostic> = fresh_files
             .iter()
             .flat_map(|(file_path, _content)| {
                 let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
@@ -182,9 +189,9 @@ impl RuleEngine {
             .collect();
 
         // Process stale files in parallel with rayon
-        let stale_results: Vec<(std::path::PathBuf, String, Vec<Diagnostic>)> = stale
+        let stale_results: Vec<(std::path::PathBuf, String, Vec<Diagnostic>)> = stale_files
             .par_iter()
-            .map(|&(file_path, content)| {
+            .map(|&(file_path, content, ref hash)| {
                 let rel_path = file_path.strip_prefix(project_root).unwrap_or(file_path);
 
                 let diagnostics = match syn::parse_file(content) {
@@ -199,14 +206,14 @@ impl RuleEngine {
                     }
                 };
 
-                (rel_path.to_path_buf(), content.clone(), diagnostics)
+                (rel_path.to_path_buf(), hash.clone(), diagnostics)
             })
             .collect();
 
-        // Update the cache with newly scanned results
-        for (rel_path, content, diagnostics) in stale_results {
+        // Update the cache with newly scanned results using pre-computed hashes
+        for (rel_path, hash, diagnostics) in stale_results {
             all_diagnostics.extend_from_slice(&diagnostics);
-            scan_cache.update(&rel_path, &content, diagnostics);
+            scan_cache.update_with_hash(&rel_path, hash, diagnostics);
         }
 
         // Persist the updated cache (best-effort)
