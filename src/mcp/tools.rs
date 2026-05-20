@@ -17,8 +17,8 @@ use super::types::{
 // Tool and prompt implementations
 // ---------------------------------------------------------------------------
 
-#[tool_router]
-#[prompt_router]
+#[tool_router(vis = "pub(super)")]
+#[prompt_router(vis = "pub(super)")]
 impl RustDoctorServer {
     pub(super) fn new() -> Self {
         Self {
