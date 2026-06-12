@@ -5,6 +5,8 @@
 [![CI](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml)
 [![Crates.io Downloads](https://img.shields.io/crates/d/rust-doctor)](https://crates.io/crates/rust-doctor)
 [![npm Downloads](https://img.shields.io/npm/dm/rust-doctor)](https://www.npmjs.com/package/rust-doctor)
+[![License](https://img.shields.io/crates/l/rust-doctor)](#license)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)](https://www.rust-lang.org)
 
 A unified code health tool for Rust — scan, score, and fix your codebase.
 
@@ -405,6 +407,24 @@ The score counts unique rules violated, not occurrences — fixing one instance 
 | 50–74 | Needs work | • • |
 | 0–49 | Critical | x x |
 
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the dev
+setup, the CI gates to run before opening a PR (`cargo fmt`, `cargo clippy`,
+`cargo test`), and the guide to authoring a new rule. By participating you agree
+to the [Code of Conduct](CODE_OF_CONDUCT.md). For security issues, follow the
+[Security Policy](SECURITY.md) — please don't open a public issue.
+
 ## License
 
-MIT OR Apache-2.0
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
