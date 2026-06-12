@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// Configuration as read from a file (all fields optional).
 #[derive(Debug, Deserialize, Default, Clone)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct FileConfig {
     /// Rules and files to ignore.
     pub ignore: IgnoreConfig,
@@ -645,6 +645,20 @@ mod tests {
             Some("error".to_string())
         );
         assert_eq!(config.score.fail_below, Some(80));
+    }
+
+    #[test]
+    fn test_deny_unknown_fields_rejects_typos() {
+        let toml_str = r#"
+            igonre = ["rule"]
+        "#;
+        let result = toml::from_str::<FileConfig>(toml_str);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("unknown field"),
+            "Expected 'unknown field' error, got: {err}"
+        );
     }
 
     #[test]
