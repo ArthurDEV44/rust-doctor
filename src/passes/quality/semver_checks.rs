@@ -40,6 +40,7 @@ fn run_semver_checks(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let child = Command::new("cargo")
         .args(["semver-checks", "check-release"])
         .current_dir(project_root)
+        .env("CARGO_TARGET_DIR", project_root.join("target/rust-doctor"))
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()

@@ -323,6 +323,9 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
     let _clippy_config_guard = ClippyConfigGuard::new(project_root);
 
     let mut cmd = Command::new("cargo");
+    // Use a dedicated target dir so analysis never contends with or clobbers the
+    // project's primary `target/` (mirrors rust-analyzer's `target/rust-analyzer`).
+    cmd.env("CARGO_TARGET_DIR", project_root.join("target/rust-doctor"));
     cmd.args([
         "clippy",
         "--message-format=json",
