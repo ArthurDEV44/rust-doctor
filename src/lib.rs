@@ -38,7 +38,7 @@
 )]
 #![expect(
     clippy::missing_errors_doc,
-    reason = "# Errors docs added to key functions; remaining deferred until v1.0"
+    reason = "deferred until v1.0 public API stabilization"
 )]
 #![expect(
     clippy::doc_markdown,
@@ -59,10 +59,6 @@
 #![expect(
     clippy::items_after_statements,
     reason = "inline test helpers after setup"
-)]
-#![expect(
-    clippy::too_many_lines,
-    reason = "some analysis functions are inherently long"
 )]
 #![expect(clippy::cast_sign_loss, reason = "score clamped to 0-100 before cast")]
 #![expect(
@@ -97,6 +93,13 @@ pub mod sarif;
 pub mod scan;
 /// Interactive setup wizard for AI agent integration.
 pub mod setup;
+
+/// Pipeline helper functions used by the CLI entry point.
+///
+/// This module is public so the binary crate can call these functions,
+/// but its contents are not part of the stable public API.
+#[doc(hidden)]
+pub mod run;
 
 // Internal implementation modules
 pub(crate) mod cache;
