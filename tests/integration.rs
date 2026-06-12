@@ -3,6 +3,10 @@
 //! These tests create temporary Rust projects with known violations
 //! and verify that `scan_project` detects them correctly.
 
+// Integration test crates aren't covered by clippy.toml `allow-*-in-tests`
+// (clippy #13981); unwrap/expect are fine in test assertions.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use rust_doctor::cli::FailOn;
 use rust_doctor::config::ResolvedConfig;
 use rust_doctor::diagnostics::{ScanResult, Severity};

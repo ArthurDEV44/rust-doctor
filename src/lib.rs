@@ -26,6 +26,9 @@
 
 #![forbid(unsafe_code)]
 #![warn(clippy::pedantic)]
+// Restriction lints (unwrap/expect/panic) are enforced in prod but normal in
+// tests. Belt for clippy #13981 where allow-*-in-tests misses some contexts.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 // Expect these pedantic lints project-wide — they conflict with our design choices.
 // Using #[expect] so the compiler warns if any suppression becomes dead.
 #![expect(

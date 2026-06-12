@@ -1,3 +1,7 @@
+// Integration test crates aren't covered by clippy.toml `allow-*-in-tests`
+// (clippy #13981); unwrap/expect are fine in test assertions.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use rust_doctor::diagnostics::{Category, Diagnostic, ScanResult, ScoreLabel, Severity};
 use std::path::PathBuf;
 use std::time::Duration;

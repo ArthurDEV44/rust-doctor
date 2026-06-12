@@ -42,6 +42,16 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 option_if_let_else = "allow"
 significant_drop_tightening = "allow"
+# Restriction lints — cherry-picked (never enable the whole restriction group).
+# panic-like escapes are denied; unwrap/expect stay warn (see clippy #9222,
+# tokio #3887). CI keeps unwrap/expect/todo as warnings, not hard errors.
+panic = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+todo = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+unwrap_in_result = "warn"
 
 [profile.release]
 strip = true
