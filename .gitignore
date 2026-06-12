@@ -1,13 +1,49 @@
+# Build artifacts
 /target
+**/target/
+*.rs.bk
+
+# rust-doctor incremental cache
 .rust-doctor-cache.json
+
+# Demo video tooling (Remotion) — keep source, ignore deps/output
 rust-doctor-video/node_modules/
 rust-doctor-video/out/
-.meta/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Secrets and credentials
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 credentials.*
 secrets.*
+
+# Local AI agent / tooling state (not for the public repo)
+/.meta/
+/ULTRON/
+/tasks/
+.codex
+**/.claude/
+
+# Local planning & marketing (not for the public repo)
+/LAUNCH-PLAN.md
+
+# Security scan outputs (run locally, never committed)
+/VULN-FINDINGS.*
+/TRIAGE.*
+/PATCHES/
+
+# Vercel
+.vercel
