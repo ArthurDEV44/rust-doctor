@@ -578,4 +578,83 @@ mod tests {
         assert!(json.get("score").is_some());
         assert!(json.get("score_label").is_some());
     }
+
+    // --- US-009: MCP timeout wrapper & spawn_blocking integration tests ---
+
+    #[tokio::test]
+    async fn test_scan_via_spawn_blocking_completes() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let (_dir, project_info, resolved) = discover_and_resolve(manifest_dir, false).unwrap();
+
+        let result = tokio::task::spawn_blocking(move || {
+            scan::scan_project(&project_info, &resolved, true, &[], true)
+        })
+        .await;
+
+        assert!(result.is_ok(), "spawn_blocking should not panic");
+        let scan_result = result.unwrap();
+        assert!(scan_result.is_ok(), "scan_project should succeed");
+        let scan = scan_result.unwrap();
+        assert!(
+            scan.score <= 100,
+            "score should be 0-100, got {}",
+            scan.score
+        );
+    }
+
+    #[tokio::test]
+    async fn test_timeout_fires_for_slow_task() {
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(1),
+            tokio::task::spawn_blocking(|| {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                42
+            }),
+        )
+        .await;
+
+        assert!(result.is_err(), "Expected timeout error");
+    }
+
+    #[tokio::test]
+    async fn test_spawn_blocking_panic_is_caught() {
+        let result = tokio::task::spawn_blocking(|| {
+            panic!("intentional test panic");
+        })
+        .await;
+
+        assert!(result.is_err(), "Expected JoinError from panic");
+    }
+
+    #[tokio::test]
+    async fn test_mcp_scan_pipeline_produces_valid_result() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let (_dir, project_info, resolved) = discover_and_resolve(manifest_dir, false).unwrap();
+
+        let offline = true;
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(300),
+            tokio::task::spawn_blocking(move || {
+                scan::scan_project(&project_info, &resolved, offline, &[], true)
+            }),
+        )
+        .await
+        .expect("scan should not time out")
+        .expect("spawn_blocking should not panic")
+        .expect("scan_project should succeed");
+
+        assert!(
+            result.score <= 100,
+            "score should be 0-100, got {}",
+            result.score
+        );
+        assert!(
+            !result.diagnostics.is_empty(),
+            "rust-doctor always has some findings on itself"
+        );
+        assert!(
+            result.source_file_count > 0,
+            "should have scanned at least one source file"
+        );
+    }
 }
