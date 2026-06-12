@@ -1,38 +1,73 @@
 # rust-doctor
 
-[![Crates.io](https://img.shields.io/crates/v/rust-doctor)](https://crates.io/crates/rust-doctor)
-[![npm](https://img.shields.io/npm/v/rust-doctor)](https://www.npmjs.com/package/rust-doctor)
-[![CI](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml/badge.svg)](https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml)
-[![Crates.io Downloads](https://img.shields.io/crates/d/rust-doctor)](https://crates.io/crates/rust-doctor)
-[![npm Downloads](https://img.shields.io/npm/dm/rust-doctor)](https://www.npmjs.com/package/rust-doctor)
-[![License](https://img.shields.io/crates/l/rust-doctor)](#license)
-[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue)](https://www.rust-lang.org)
+<p align="center">
+  <a href="https://crates.io/crates/rust-doctor"><img alt="Crates.io" src="https://img.shields.io/crates/v/rust-doctor?logo=rust"></a>
+  <a href="https://www.npmjs.com/package/rust-doctor"><img alt="npm" src="https://img.shields.io/npm/v/rust-doctor?logo=npm"></a>
+  <a href="https://docs.rs/rust-doctor"><img alt="docs.rs" src="https://img.shields.io/docsrs/rust-doctor?logo=docsdotrs&label=docs.rs"></a>
+  <a href="https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ArthurDEV44/rust-doctor/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://crates.io/crates/rust-doctor"><img alt="Downloads" src="https://img.shields.io/crates/d/rust-doctor?label=downloads"></a>
+  <a href="#license"><img alt="License" src="https://img.shields.io/crates/l/rust-doctor"></a>
+  <img alt="MSRV" src="https://img.shields.io/badge/MSRV-1.85-blue?logo=rust">
+</p>
 
-A unified code health tool for Rust — scan, score, and fix your codebase.
+**The one-command health check for your Rust project.** rust-doctor scans for security, performance, correctness, architecture, and dependency issues, then folds everything into a single 0–100 score with diagnostics you can act on.
 
-rust-doctor scans Rust projects for security, performance, correctness, architecture, and dependency issues, producing a 0–100 health score with actionable diagnostics.
+It runs `cargo clippy`, `cargo-audit`, `cargo-deny`, `cargo-geiger`, and 19 custom AST rules in one pass, and ships as a CLI, a library crate, an [MCP](https://modelcontextprotocol.io/) server, an npm package, and a GitHub Action — so it works in your terminal, your CI, and inside Claude Code, Cursor, or any MCP agent.
+
+```console
+$ rust-doctor                          # rust-doctor scanning its own codebase
+
+   ◠ ◠    rust-doctor
+    ▽     99 / 100   Great
+
+   ████████████████████████████████████████
+
+   Security 99 · Reliability 99 · Maintainability 100 · Performance 99 · Dependencies 99
+
+   ✓ 0 errors   ⚠ 44 warnings   ℹ 42 infos   ·   60 files scanned in 32.9s
+```
+
+## Quickstart
+
+No Rust toolchain required — `npx` downloads a pre-built native binary for your platform:
+
+```bash
+npx rust-doctor            # scan the current directory and print the score
+```
+
+Prefer cargo? `cargo install rust-doctor`. Want it in your AI agent? `npx rust-doctor setup`. Other formats are in [Installation](#installation).
 
 ### See it in action →
 
 https://github.com/user-attachments/assets/6766a5d8-9a47-4eb8-892e-76c1a23eb122
 
+## Where it fits
+
+Rust already has excellent point tools. rust-doctor runs them together, adds rules they don't cover, and turns the result into one number you can track over time.
+
+| You're using | It gives you | rust-doctor adds |
+|---|---|---|
+| `cargo clippy` | 700+ built-in lints | Category + severity mapping, 19 custom AST rules (security, async, framework, architecture), and a single 0–100 score |
+| `cargo audit` / `cargo deny` | CVE and supply-chain checks | One pass that also runs clippy, geiger, and machete — skipping gracefully when a tool isn't installed |
+| Separate CI steps | Each tool's own output | One command with `--json`, `--sarif`, `--diff`, `--score`, and PR comments |
+| Claude Code / Cursor | Code generation | An MCP server and a slash-command skill, so the agent scans, scores, and fixes as it writes |
+
 ## Features
 
-- **700+ clippy lints** with severity overrides and category mapping
-- **19 custom AST rules** via syn: error handling, performance, security, async, architecture, framework anti-patterns
-- **Async anti-pattern detection**: blocking calls in async, block_on in async context
-- **Framework-specific rules**: tokio, axum, actix-web
-- **Dependency auditing**: CVE detection via cargo-audit, unused deps via cargo-machete
-- **Health score**: 0–100 with ASCII doctor face output
-- **MCP server**: integrate with Claude Code, Cursor, or any MCP-compatible AI tool
-- **Diff mode**: scan only changed files for fast CI feedback
-- **Workspace support**: scan all crates or select specific members
+- **700+ clippy lints** with explicit severity overrides and category mapping
+- **19 custom AST rules** via [syn](https://crates.io/crates/syn): error handling, performance, security, async, architecture, and framework anti-patterns
+- **Async anti-pattern detection**: blocking calls and `block_on` inside an async context
+- **Framework-aware rules**: tokio, axum, actix-web — only run when the dependency is present
+- **Supply-chain auditing**: CVEs via `cargo-audit`, bans/licenses via `cargo-deny`, unsafe via `cargo-geiger`, unused deps via `cargo-machete`
+- **A 0–100 health score** across five weighted dimensions, with an ASCII doctor that reacts to the result
+- **MCP server**: 4 read-only tools + 2 expert audit prompts for Claude Code, Cursor, Windsurf, or any MCP client
+- **Diff mode**: `--diff` scans only changed files for fast CI feedback
+- **Workspace support**: scan every crate or pick specific members
 - **Inline suppression**: `// rust-doctor-disable-next-line <rule>`
-- **Multiple output modes**: terminal, `--json`, `--score`, `--sarif`
-- **Setup wizard**: `rust-doctor setup` — auto-detects Claude Code, Cursor, Windsurf and configures MCP or installs skills in one command
-- **Claude Code skill**: `/rust-doctor` slash command — no MCP setup needed
-- **Library crate**: use rust-doctor programmatically via `lib.rs`
-- **NO_COLOR support**: respects the NO_COLOR environment variable
+- **Output modes**: terminal, `--json`, `--score` (bare integer for CI), `--sarif` (GitHub code scanning)
+- **`--fix`**: apply machine-applicable fixes to source files
+- **Setup wizard**: `rust-doctor setup` auto-detects Claude Code, Cursor, and Windsurf and wires up MCP or installs the skill in one command
+- **Distributed everywhere**: CLI binary, library crate, MCP server, npm package, and GitHub Action
 
 ## Installation
 
@@ -394,6 +429,8 @@ let resolved = rust_doctor::config::resolve_config_defaults(config.as_ref());
 let result = rust_doctor::scan::scan_project(&info, &resolved, false, &[], true)?;
 println!("Score: {}/100 ({})", result.score, result.score_label);
 ```
+
+Full API docs are on [docs.rs/rust-doctor](https://docs.rs/rust-doctor).
 
 ## Score Calculation
 
