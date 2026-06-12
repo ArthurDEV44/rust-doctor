@@ -160,6 +160,9 @@ pub struct ScanResult {
     pub warning_count: usize,
     /// Number of info-severity findings.
     pub info_count: usize,
+    /// Per-pass timing information (pass name → elapsed duration).
+    #[serde(serialize_with = "serialize_pass_timings")]
+    pub pass_timings: Vec<(String, Duration)>,
 }
 
 fn serialize_duration<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
@@ -167,6 +170,24 @@ where
     S: serde::Serializer,
 {
     serializer.serialize_f64(duration.as_secs_f64())
+}
+
+fn serialize_pass_timings<S>(
+    timings: &[(String, Duration)],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(timings.len()))?;
+    for (name, duration) in timings {
+        seq.serialize_element(&serde_json::json!({
+            "pass": name,
+            "elapsed_secs": duration.as_secs_f64()
+        }))?;
+    }
+    seq.end()
 }
 
 #[cfg(test)]
@@ -245,6 +266,10 @@ mod tests {
             error_count: 0,
             warning_count: 0,
             info_count: 0,
+            pass_timings: vec![
+                ("clippy".to_string(), Duration::from_millis(800)),
+                ("custom rules".to_string(), Duration::from_millis(200)),
+            ],
         };
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["score"], 100);
@@ -252,5 +277,11 @@ mod tests {
         assert_eq!(json["source_file_count"], 10);
         assert_eq!(json["elapsed"], 1.5);
         assert_eq!(json["error_count"], 0);
+        // Verify pass_timings serialization
+        let timings = json["pass_timings"].as_array().unwrap();
+        assert_eq!(timings.len(), 2);
+        assert_eq!(timings[0]["pass"], "clippy");
+        assert!((timings[0]["elapsed_secs"].as_f64().unwrap() - 0.8).abs() < 0.001);
+        assert_eq!(timings[1]["pass"], "custom rules");
     }
 }

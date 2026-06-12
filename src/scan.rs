@@ -33,6 +33,8 @@ pub fn scan_project(
     project_filter: &[String],
     suppress_spinner: bool,
 ) -> Result<ScanResult, crate::error::ScanError> {
+    tracing::info!(project = %project_info.name, "starting scan");
+
     // Step 1: Verify ignored rules are known — warns on typos in config
     validate_config(resolved);
 
@@ -45,7 +47,7 @@ pub fn scan_project(
 
     // Step 4: Run all analysis passes in parallel
     // Two levels of parallelism: rayon for scan roots, std::thread::scope for passes within a root
-    let (mut all_diagnostics, total_source_files, all_skipped_passes, total_elapsed) = run_passes(
+    let mut passes_output = run_passes(
         project_info,
         resolved,
         &scan_roots,
@@ -55,23 +57,33 @@ pub fn scan_project(
     );
 
     // Step 5: Deduplicate — same rule+file+line from overlapping workspace scans = one diagnostic
-    dedup_diagnostics(&mut all_diagnostics);
+    dedup_diagnostics(&mut passes_output.diagnostics);
 
     // Step 6: In diff mode, drop diagnostics outside changed files
     if let Some(ref ctx) = diff_context {
-        all_diagnostics = diff::filter_to_changed_files(all_diagnostics, &ctx.changed_files);
+        passes_output.diagnostics =
+            diff::filter_to_changed_files(passes_output.diagnostics, &ctx.changed_files);
     }
 
     // Step 7: Apply inline suppressions (// rust-doctor-disable-next-line <rule>)
-    let all_diagnostics = apply_suppressions(all_diagnostics, project_info, resolved);
+    let all_diagnostics = apply_suppressions(passes_output.diagnostics, project_info, resolved);
 
     // Step 8: Calculate score and build the final result
-    Ok(build_result(
+    let result = build_result(
         all_diagnostics,
-        total_source_files,
-        all_skipped_passes,
-        total_elapsed,
-    ))
+        passes_output.source_file_count,
+        passes_output.skipped_passes,
+        passes_output.elapsed,
+        passes_output.pass_timings,
+    );
+
+    tracing::info!(
+        score = result.score,
+        diagnostics = result.diagnostics.len(),
+        "scan complete"
+    );
+
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +243,15 @@ fn build_passes(
     passes
 }
 
+/// Aggregated output from running all analysis passes across scan roots.
+struct PassesOutput {
+    diagnostics: Vec<Diagnostic>,
+    source_file_count: usize,
+    skipped_passes: Vec<String>,
+    elapsed: Duration,
+    pass_timings: Vec<(String, Duration)>,
+}
+
 fn run_passes(
     project_info: &ProjectInfo,
     resolved: &ResolvedConfig,
@@ -238,12 +259,13 @@ fn run_passes(
     diff_context: Option<&diff::DiffContext>,
     offline: bool,
     suppress_spinner: bool,
-) -> (Vec<Diagnostic>, usize, Vec<String>, Duration) {
+) -> PassesOutput {
     let is_diff_mode = diff_context.is_some();
     let mut all_diagnostics = Vec::new();
     let mut total_source_files = 0;
     let mut all_skipped_passes = Vec::new();
     let mut total_elapsed = Duration::ZERO;
+    let mut all_pass_timings = Vec::new();
 
     // In diff mode, count changed files once (not per scan root)
     if let Some(ctx) = diff_context {
@@ -270,14 +292,16 @@ fn run_passes(
         all_diagnostics.extend(pass_result.diagnostics);
         all_skipped_passes.extend(pass_result.skipped_passes);
         total_elapsed = total_elapsed.max(pass_result.elapsed); // max, not sum, since parallel
+        all_pass_timings.extend(pass_result.pass_timings);
     }
 
-    (
-        all_diagnostics,
-        total_source_files,
-        all_skipped_passes,
-        total_elapsed,
-    )
+    PassesOutput {
+        diagnostics: all_diagnostics,
+        source_file_count: total_source_files,
+        skipped_passes: all_skipped_passes,
+        elapsed: total_elapsed,
+        pass_timings: all_pass_timings,
+    }
 }
 
 /// Deduplicate diagnostics from overlapping workspace scans.
@@ -317,6 +341,7 @@ fn build_result(
     source_file_count: usize,
     mut skipped_passes: Vec<String>,
     elapsed: Duration,
+    pass_timings: Vec<(String, Duration)>,
 ) -> ScanResult {
     let error_count = diagnostics
         .iter()
@@ -346,6 +371,7 @@ fn build_result(
         error_count,
         warning_count,
         info_count,
+        pass_timings,
     }
 }
 
@@ -423,7 +449,7 @@ mod tests {
             make_diagnostic("warn1", Severity::Warning, Some(3)),
             make_diagnostic("info1", Severity::Info, Some(4)),
         ];
-        let result = build_result(diags, 10, vec![], Duration::from_secs(1));
+        let result = build_result(diags, 10, vec![], Duration::from_secs(1), vec![]);
         assert_eq!(result.error_count, 2);
         assert_eq!(result.warning_count, 1);
         assert_eq!(result.info_count, 1);
@@ -437,7 +463,7 @@ mod tests {
             "cargo-audit".to_string(),
             "cargo-deny".to_string(), // duplicate
         ];
-        let result = build_result(vec![], 0, skipped, Duration::ZERO);
+        let result = build_result(vec![], 0, skipped, Duration::ZERO, vec![]);
         assert_eq!(result.skipped_passes.len(), 2);
         assert_eq!(result.skipped_passes[0], "cargo-audit"); // sorted
         assert_eq!(result.skipped_passes[1], "cargo-deny");
@@ -445,7 +471,7 @@ mod tests {
 
     #[test]
     fn build_result_empty_diagnostics_gives_perfect_score() {
-        let result = build_result(vec![], 5, vec![], Duration::from_millis(100));
+        let result = build_result(vec![], 5, vec![], Duration::from_millis(100), vec![]);
         assert_eq!(result.score, 100);
         assert_eq!(result.error_count, 0);
         assert_eq!(result.warning_count, 0);

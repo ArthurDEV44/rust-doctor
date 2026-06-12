@@ -26,6 +26,11 @@ pub fn render_terminal(result: &ScanResult, verbose: bool) {
 
     // Print score box
     print_score_box(result);
+
+    // Print pass timings in verbose mode
+    if verbose && !result.pass_timings.is_empty() {
+        print_pass_timings(&result.pass_timings);
+    }
 }
 
 // ── Box layout helpers ───────────────────────────────────────────────────
@@ -219,7 +224,7 @@ fn print_score_box(result: &ScanResult) {
     let iw = max_width + 2;
 
     // Render box
-    println!("  {}{}{}", dim("┌"), dim(&"─".repeat(iw)), dim("┐"),);
+    println!("  {}{}{}", dim("┌"), dim(&"─".repeat(iw)), dim("┐"));
 
     render_header(iw, score);
 
@@ -233,7 +238,7 @@ fn print_score_box(result: &ScanResult) {
     render_dimension_bars(iw, result, &dim_text);
     render_stats_footer(iw, result, &stats, skipped_text.as_deref());
 
-    println!("  {}{}{}", dim("└"), dim(&"─".repeat(iw)), dim("┘"),);
+    println!("  {}{}{}", dim("└"), dim(&"─".repeat(iw)), dim("┘"));
 }
 
 struct ScoreBar {
@@ -250,7 +255,7 @@ fn build_score_bar(score: u32) -> ScoreBar {
 
     let plain = format!("{filled_str}{empty_str}");
     let dimmed_empty = empty_str.if_supports_color(Stream::Stdout, |t| t.dimmed());
-    let colored = format!("{}{}", colorize_by_score(&filled_str, score), dimmed_empty,);
+    let colored = format!("{}{}", colorize_by_score(&filled_str, score), dimmed_empty);
 
     ScoreBar { plain, colored }
 }
@@ -262,6 +267,29 @@ fn colorize_by_score(text: &str, score: u32) -> String {
         format!("{}", text.if_supports_color(Stream::Stdout, |t| t.yellow()))
     } else {
         format!("{}", text.if_supports_color(Stream::Stdout, |t| t.red()))
+    }
+}
+
+/// Print per-pass timing table to stderr (verbose mode only).
+fn print_pass_timings(timings: &[(String, std::time::Duration)]) {
+    eprintln!();
+    eprintln!(
+        "{}",
+        "Pass timings:".if_supports_color(Stream::Stderr, |t| t.dimmed())
+    );
+    // Find the longest pass name for alignment
+    let max_name_len = timings
+        .iter()
+        .map(|(name, _)| name.len())
+        .max()
+        .unwrap_or(0);
+    for (name, duration) in timings {
+        eprintln!(
+            "  {:<width$}  {:.1}s",
+            name.if_supports_color(Stream::Stderr, |t| t.dimmed()),
+            duration.as_secs_f64(),
+            width = max_name_len,
+        );
     }
 }
 
@@ -392,6 +420,7 @@ mod tests {
             error_count: errors,
             warning_count: warnings,
             info_count: infos,
+            pass_timings: vec![],
         }
     }
 

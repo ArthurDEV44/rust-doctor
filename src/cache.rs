@@ -56,16 +56,20 @@ impl ScanCache {
     /// wrong version, or a different config hash.
     pub fn load(project_root: &Path, config_hash: &str) -> Option<Self> {
         let cache_path = project_root.join(CACHE_FILENAME);
+        tracing::debug!(path = %cache_path.display(), "loading scan cache");
         let content = std::fs::read_to_string(&cache_path).ok()?;
         let cache: Self = serde_json::from_str(&content).ok()?;
 
         if cache.version != CACHE_VERSION {
+            tracing::debug!("cache miss — version mismatch, full scan needed");
             return None;
         }
         if cache.config_hash != config_hash {
+            tracing::debug!("cache miss — config changed, full scan needed");
             return None;
         }
 
+        tracing::debug!(files = cache.files.len(), "cache loaded");
         Some(cache)
     }
 
@@ -74,7 +78,8 @@ impl ScanCache {
     /// Errors are silently ignored — the cache is a best-effort optimisation.
     pub fn save(&self, project_root: &Path) {
         let cache_path = project_root.join(CACHE_FILENAME);
-        if let Ok(json) = serde_json::to_string_pretty(self) {
+        tracing::debug!(path = %cache_path.display(), files = self.files.len(), "saving cache");
+        if let Ok(json) = serde_json::to_string(self) {
             let _ = std::fs::write(&cache_path, json);
         }
     }

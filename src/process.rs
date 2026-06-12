@@ -25,8 +25,7 @@ pub fn is_cargo_subcommand_available(name: &str) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+        .is_ok_and(|s| s.success());
 
     CACHE
         .lock()
@@ -54,6 +53,11 @@ pub fn run_with_timeout(
     timeout_secs: u64,
     max_output_bytes: u64,
 ) -> Result<ProcessOutput, String> {
+    tracing::debug!(
+        timeout_secs,
+        max_output_bytes,
+        "running subprocess with timeout"
+    );
     let stdout = child
         .stdout
         .take()
@@ -103,9 +107,12 @@ pub fn run_with_timeout(
         .ok()
         .and_then(|mut c| c.wait().ok().and_then(|s| s.code()));
 
+    let did_timeout = timed_out.load(Ordering::Relaxed);
+    tracing::debug!(exit_code, timed_out = did_timeout, "subprocess finished");
+
     Ok(ProcessOutput {
         stdout: output,
-        timed_out: timed_out.load(Ordering::Relaxed),
+        timed_out: did_timeout,
         exit_code,
     })
 }

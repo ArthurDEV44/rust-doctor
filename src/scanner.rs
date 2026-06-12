@@ -23,6 +23,7 @@ pub trait AnalysisPass: Send + Sync {
 struct PassResult {
     name: String,
     result: Result<Vec<Diagnostic>, crate::error::PassError>,
+    elapsed: std::time::Duration,
 }
 
 /// Result from the scan orchestrator (diagnostics + metadata, no score).
@@ -31,6 +32,7 @@ pub struct ScanPassResult {
     pub diagnostics: Vec<Diagnostic>,
     pub skipped_passes: Vec<String>,
     pub elapsed: std::time::Duration,
+    pub pass_timings: Vec<(String, std::time::Duration)>,
 }
 
 /// Orchestrates multiple analysis passes in parallel and merges results.
@@ -54,6 +56,7 @@ impl ScanOrchestrator {
         suppress_spinner: bool,
     ) -> ScanPassResult {
         let start = Instant::now();
+        tracing::debug!(passes = self.passes.len(), "starting scan passes");
 
         // Create spinner
         let spinner = if suppress_spinner {
@@ -80,8 +83,10 @@ impl ScanOrchestrator {
         let mut all_diagnostics = Vec::new();
         let mut skipped_passes = Vec::new();
         let mut pass_errors = Vec::new();
+        let mut pass_timings = Vec::new();
 
         for result in results {
+            pass_timings.push((result.name.clone(), result.elapsed));
             match result.result {
                 Ok(diagnostics) => all_diagnostics.extend(diagnostics),
                 Err(crate::error::PassError::Skipped { pass, reason }) => {
@@ -122,10 +127,18 @@ impl ScanOrchestrator {
         // Filter diagnostics by config
         let filtered = filter_diagnostics(all_diagnostics, config);
 
+        tracing::debug!(
+            diagnostics = filtered.len(),
+            skipped = skipped_passes.len(),
+            elapsed_ms = start.elapsed().as_millis(),
+            "scan passes complete"
+        );
+
         ScanPassResult {
             diagnostics: filtered,
             skipped_passes,
             elapsed: start.elapsed(),
+            pass_timings,
         }
     }
 
@@ -141,7 +154,12 @@ impl ScanOrchestrator {
                 .iter()
                 .map(|pass| {
                     let name = pass.name().to_string();
-                    s.spawn(move || (name, pass.run(project_root)))
+                    s.spawn(move || {
+                        let start = Instant::now();
+                        let result = pass.run(project_root);
+                        let elapsed = start.elapsed();
+                        (name, result, elapsed)
+                    })
                 })
                 .collect();
 
@@ -151,8 +169,13 @@ impl ScanOrchestrator {
                 .into_iter()
                 .enumerate()
                 .map(|(i, h)| {
-                    if let Ok((name, result)) = h.join() {
-                        PassResult { name, result }
+                    if let Ok((name, result, elapsed)) = h.join() {
+                        tracing::debug!(pass = %name, elapsed_ms = elapsed.as_millis(), "pass complete");
+                        PassResult {
+                            name,
+                            result,
+                            elapsed,
+                        }
                     } else {
                         let name = pass_names
                             .get(i)
@@ -161,6 +184,7 @@ impl ScanOrchestrator {
                         PassResult {
                             name: name.clone(),
                             result: Err(crate::error::PassError::Panicked { pass: name }),
+                            elapsed: Duration::ZERO,
                         }
                     }
                 })

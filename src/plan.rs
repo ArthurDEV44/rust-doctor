@@ -271,6 +271,7 @@ mod tests {
             error_count,
             warning_count,
             info_count,
+            pass_timings: vec![],
         }
     }
 

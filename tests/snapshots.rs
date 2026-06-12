@@ -53,6 +53,7 @@ fn test_scan_result_empty_snapshot() {
         error_count: 0,
         warning_count: 0,
         info_count: 0,
+        pass_timings: vec![],
     };
     insta::assert_json_snapshot!("scan_result_empty", result);
 }
@@ -99,6 +100,7 @@ fn test_scan_result_with_findings_snapshot() {
         error_count: 1,
         warning_count: 1,
         info_count: 0,
+        pass_timings: vec![],
     };
     insta::assert_json_snapshot!("scan_result_with_findings", result);
 }
