@@ -16,7 +16,7 @@ exclude = ["npm/", ".claude-plugin/", ".claude/", ".meta/", "tasks/", "ULTRON/",
 [dependencies]
 cargo_metadata = "0.19"
 clap = { version = "4.6", features = ["derive"] }
-dialoguer = "0.11"
+dialoguer = "0.12"
 globset = "0.4"
 indicatif = "0.18"
 owo-colors = { version = "4", features = ["supports-colors"] }
