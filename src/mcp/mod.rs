@@ -123,6 +123,25 @@ mod tests {
         assert!(explanation.contains("Error Handling"));
         assert!(explanation.contains("warning"));
         assert!(explanation.contains("Fix:"));
+        // US-013: custom rules are flagged heuristic, with their known limitation.
+        assert!(explanation.contains("Heuristic"));
+        assert!(explanation.contains("Known limitation"));
+    }
+
+    #[test]
+    fn test_explain_custom_rule_without_limitation_is_still_heuristic() {
+        // A custom rule with no documented blind spot still carries the marker.
+        let explanation = get_rule_explanation("result-unit-error");
+        assert!(explanation.contains("Heuristic"));
+        assert!(!explanation.contains("Known limitation"));
+    }
+
+    #[test]
+    fn test_explain_clippy_lint_is_type_aware() {
+        // US-013: clippy lints are distinguished as type-aware, never heuristic.
+        let explanation = get_rule_explanation("clippy::expect_used");
+        assert!(explanation.contains("Type-aware"));
+        assert!(!explanation.contains("Heuristic"));
     }
 
     #[test]
@@ -156,6 +175,17 @@ mod tests {
         assert!(listing.contains("## Custom Rules"));
         assert!(listing.contains("## Clippy Lints"));
         assert!(listing.contains("## External Tools"));
+    }
+
+    #[test]
+    fn test_rules_listing_marks_heuristic_and_limitations() {
+        // US-013: the listing frames custom rules as heuristic, distinguishes
+        // type-aware clippy, and surfaces the known-FP limitations.
+        let listing = get_all_rules_listing();
+        assert!(listing.contains("heuristic"));
+        assert!(listing.contains("type-aware"));
+        assert!(listing.contains("Known heuristic limitations"));
+        assert!(listing.contains("large-enum-variant"));
     }
 
     #[test]
@@ -656,5 +686,60 @@ mod tests {
             result.source_file_count > 0,
             "should have scanned at least one source file"
         );
+    }
+
+    // --- US-007: cooperative cancellation actually stops the work ---
+
+    #[test]
+    fn test_cancellation_stops_scan_work() {
+        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let (_dir, project_info, resolved) = discover_and_resolve(manifest_dir, false).unwrap();
+
+        // Pre-cancelled: run_passes must break before launching any pass, so no
+        // diagnostics and no files are scanned — proves the WORK stops, not just
+        // that the caller sees an error (fixes the prior timeout-only coverage).
+        let cancelled = Arc::new(AtomicBool::new(true));
+        let stopped =
+            scan::scan_project_cancellable(&project_info, &resolved, true, &[], true, &cancelled)
+                .unwrap();
+        assert_eq!(
+            stopped.diagnostics.len(),
+            0,
+            "a cancelled scan must not run any passes"
+        );
+        assert_eq!(stopped.source_file_count, 0, "no files should be scanned");
+
+        // Sanity: the same project with a live (never-set) flag does real work.
+        let live = Arc::new(AtomicBool::new(false));
+        let full = scan::scan_project_cancellable(&project_info, &resolved, true, &[], true, &live)
+            .unwrap();
+        assert!(
+            full.source_file_count > 0 && !full.diagnostics.is_empty(),
+            "a live scan should scan files and find diagnostics"
+        );
+    }
+
+    // --- US-009: score honors ignore_project_config ---
+
+    #[test]
+    fn test_score_input_ignore_project_config_defaults_false() {
+        let input: super::types::ScoreInput =
+            serde_json::from_value(serde_json::json!({ "directory": "/x" })).unwrap();
+        assert!(
+            !input.ignore_project_config,
+            "ignore_project_config must default to false (aligned with ScanInput)"
+        );
+    }
+
+    #[test]
+    fn test_score_input_ignore_project_config_parsed() {
+        let input: super::types::ScoreInput = serde_json::from_value(
+            serde_json::json!({ "directory": "/x", "ignore_project_config": true }),
+        )
+        .unwrap();
+        assert!(input.ignore_project_config);
     }
 }

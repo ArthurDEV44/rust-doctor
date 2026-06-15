@@ -1,10 +1,15 @@
-use crate::scan;
+use crate::diagnostics::ScanResult;
+use crate::discovery::ProjectInfo;
+use crate::{config, scan};
 use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::model::{
     CallToolResult, Content, GetPromptResult, LoggingLevel, LoggingMessageNotificationParam,
     PromptMessage, PromptMessageRole,
 };
 use rmcp::{ErrorData as McpError, RoleServer, prompt, prompt_router, tool, tool_router};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use super::RustDoctorServer;
 use super::helpers::{discover_and_resolve, format_scan_report, group_diagnostics};
@@ -12,6 +17,49 @@ use super::rules::{get_all_rules_listing, get_rule_explanation};
 use super::types::{
     DeepAuditArgs, ExplainRuleInput, HealthCheckArgs, ScanInput, ScoreInput, ScoreOutput,
 };
+
+/// MCP timeout for a single scan/score call. On expiry the work is cancelled
+/// cooperatively, not detached.
+const MCP_SCAN_TIMEOUT_SECS: u64 = 300;
+
+/// Run a scan on a blocking thread under a 5-minute absolute timeout.
+///
+/// On timeout the shared cancel flag is set so the (now-detached) blocking scan
+/// stops launching new passes instead of running to completion in the background
+/// and exhausting the blocking pool (US-007). The client-facing timeout message is
+/// unchanged.
+async fn run_scan_with_timeout(
+    project_info: ProjectInfo,
+    resolved: config::ResolvedConfig,
+    offline: bool,
+    tool: &str,
+) -> Result<ScanResult, McpError> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_task = Arc::clone(&cancel);
+    let scan_future = tokio::task::spawn_blocking(move || {
+        scan::scan_project_cancellable(&project_info, &resolved, offline, &[], true, &cancel_task)
+    });
+
+    match tokio::time::timeout(Duration::from_secs(MCP_SCAN_TIMEOUT_SECS), scan_future).await {
+        Ok(join_result) => join_result
+            .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
+            .map_err(|e| {
+                eprintln!("MCP {tool} error: {e}");
+                McpError::internal_error(
+                    "scan failed — check project compiles with `cargo check`",
+                    None,
+                )
+            }),
+        Err(_elapsed) => {
+            // Signal the detached blocking task to stop; do not leave it running.
+            cancel.store(true, Ordering::Relaxed);
+            Err(McpError::internal_error(
+                "scan timed out after 5 minutes — project may be too large or a subprocess is hanging",
+                None,
+            ))
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tool and prompt implementations
@@ -106,27 +154,7 @@ After scanning, use explain_rule on any rule ID to get fix guidance.",
 
         // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
         let offline = input.offline;
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(300),
-            tokio::task::spawn_blocking(move || {
-                scan::scan_project(&project_info, &resolved, offline, &[], true)
-            }),
-        )
-        .await
-        .map_err(|_| {
-            McpError::internal_error(
-                "scan timed out after 5 minutes — project may be too large or a subprocess is hanging",
-                None,
-            )
-        })?
-        .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
-        .map_err(|e| {
-            eprintln!("MCP scan error: {e}");
-            McpError::internal_error(
-                "scan failed — check project compiles with `cargo check`",
-                None,
-            )
-        })?;
+        let result = run_scan_with_timeout(project_info, resolved, offline, "scan").await?;
 
         // Send completion progress
         if let Some(ref token) = progress_token {
@@ -208,31 +236,12 @@ If you also need the diagnostics, use scan instead — it includes the score too
             })
             .await;
 
-        let (_dir, project_info, resolved) = discover_and_resolve(&input.directory, false)?;
+        let (_dir, project_info, resolved) =
+            discover_and_resolve(&input.directory, input.ignore_project_config)?;
 
         // Run the CPU-bound scan on a blocking thread with a 5-minute absolute timeout
         let offline = input.offline;
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(300),
-            tokio::task::spawn_blocking(move || {
-                scan::scan_project(&project_info, &resolved, offline, &[], true)
-            }),
-        )
-        .await
-        .map_err(|_| {
-            McpError::internal_error(
-                "scan timed out after 5 minutes — project may be too large or a subprocess is hanging",
-                None,
-            )
-        })?
-        .map_err(|e| McpError::internal_error(format!("scan task failed: {e}"), None))?
-        .map_err(|e| {
-            eprintln!("MCP score error: {e}");
-            McpError::internal_error(
-                "scan failed — check project compiles with `cargo check`",
-                None,
-            )
-        })?;
+        let result = run_scan_with_timeout(project_info, resolved, offline, "score").await?;
 
         if let Some(ref token) = progress_token {
             let _ = client
