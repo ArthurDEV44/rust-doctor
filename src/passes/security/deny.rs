@@ -44,13 +44,14 @@ fn run_deny(project_root: &Path, offline: bool) -> Result<Vec<Diagnostic>, Strin
     if offline {
         args.push("--disable-fetch");
     }
-    let child = Command::new("cargo")
-        .args(&args)
-        .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("failed to spawn cargo deny: {e}"))?;
+    let child = process::spawn_in_group(
+        Command::new("cargo")
+            .args(&args)
+            .current_dir(project_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null()),
+    )
+    .map_err(|e| format!("failed to spawn cargo deny: {e}"))?;
 
     let result = process::run_with_timeout(child, DENY_TIMEOUT_SECS, MAX_OUTPUT_BYTES)?;
 

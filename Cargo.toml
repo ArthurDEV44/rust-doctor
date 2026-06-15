@@ -35,6 +35,12 @@ rmcp = { version = "1.2.0", features = ["server", "transport-io", "macros"], opt
 tokio = { version = "1.50.0", features = ["rt-multi-thread"], optional = true }
 schemars = { version = "1", optional = true }
 
+# Unix-only: kill a `cargo`/`rustc` subprocess tree by process group (US-008).
+# Already in the lock transitively, so no binary-size delta; safe API keeps
+# `#![forbid(unsafe_code)]` intact (no `unsafe`, unlike a hand-rolled `setpgid`).
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.4", features = ["process"] }
+
 [features]
 default = ["mcp"]
 mcp = ["dep:rmcp", "dep:tokio", "dep:schemars"]

@@ -340,10 +340,10 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
         cmd.arg(flag);
     }
 
-    let mut child = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    // Spawn as a process-group leader so the watchdog can kill the whole tree
+    // (cargo + its rustc children), not just the direct child (US-008).
+    let mut child = crate::process::spawn_in_group(&mut cmd)
         .map_err(|e| format!("failed to spawn cargo clippy: {e}"))?;
 
     let stdout = child
@@ -366,8 +366,8 @@ fn run_clippy(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
             && let Ok(mut c) = child_watcher.lock()
             && matches!(c.try_wait(), Ok(None))
         {
-            let _ = c.kill();
-            let _ = c.wait(); // Reap the child to avoid zombie process
+            crate::process::kill_process_tree(&mut c); // SIGKILL the whole group
+            let _ = c.wait(); // Reap the direct child to avoid a zombie process
             timed_out_watcher.store(true, Ordering::Relaxed);
         }
     });

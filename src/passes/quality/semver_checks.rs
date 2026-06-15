@@ -37,14 +37,15 @@ fn is_semver_checks_available() -> bool {
 }
 
 fn run_semver_checks(project_root: &Path) -> Result<Vec<Diagnostic>, String> {
-    let child = Command::new("cargo")
-        .args(["semver-checks", "check-release"])
-        .current_dir(project_root)
-        .env("CARGO_TARGET_DIR", project_root.join("target/rust-doctor"))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("failed to spawn cargo semver-checks: {e}"))?;
+    let child = process::spawn_in_group(
+        Command::new("cargo")
+            .args(["semver-checks", "check-release"])
+            .current_dir(project_root)
+            .env("CARGO_TARGET_DIR", project_root.join("target/rust-doctor"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null()),
+    )
+    .map_err(|e| format!("failed to spawn cargo semver-checks: {e}"))?;
 
     let result = process::run_with_timeout(child, SEMVER_TIMEOUT_SECS, MAX_OUTPUT_BYTES)?;
 
