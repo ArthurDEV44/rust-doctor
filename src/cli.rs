@@ -1,13 +1,34 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+/// Exit-code reference shown after `--help` (clap `after_help`).
+///
+/// Mirrors the constants in `run.rs` (`EXIT_SCAN_ERROR` = 2,
+/// `EXIT_GATE_FAILURE` = 3) and the "Exit Codes" section of the README so CI
+/// authors can distinguish a quality-gate failure from a crash.
+const EXIT_CODES_HELP: &str = "\
+Exit codes:
+  0  Success — scan completed and all quality gates passed
+  1  Setup error — MCP server, setup wizard, or --install-deps failed
+  2  Scan error — project discovery/compile failure or output rendering failed
+  3  Quality gate failed — score below [score] fail_below, or --fail-on threshold reached
+
+CI gating example:
+  rust-doctor --fail-on error; if [ $? -eq 3 ]; then echo 'quality gate failed'; fi";
+
 /// Diagnose your Rust project's health with a single command.
 ///
 /// rust-doctor scans Rust codebases for security, performance, correctness,
 /// architecture, and dependency issues, producing a 0-100 health score
 /// with actionable diagnostics.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None, args_conflicts_with_subcommands = true)]
+#[command(
+    version,
+    about,
+    long_about = None,
+    args_conflicts_with_subcommands = true,
+    after_help = EXIT_CODES_HELP,
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -36,7 +57,7 @@ pub struct Cli {
     #[arg(long, num_args = 0..=1, default_missing_value = "auto", value_name = "BASE")]
     pub diff: Option<String>,
 
-    /// Exit with code 1 when this severity is reached
+    /// Fail the quality gate (exit code 3) when this severity is reached
     #[arg(long, value_enum)]
     pub fail_on: Option<FailOn>,
 
@@ -81,11 +102,11 @@ fn parse_non_empty(s: &str) -> Result<String, String> {
 /// When to exit with a non-zero status code
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailOn {
-    /// Exit 1 if any errors found
+    /// Exit 3 if any errors found
     Error,
-    /// Exit 1 if any errors or warnings found
+    /// Exit 3 if any errors or warnings found
     Warning,
-    /// Exit 1 if any errors, warnings, or info findings found
+    /// Exit 3 if any errors, warnings, or info findings found
     Info,
     /// Always exit 0 (unless rust-doctor itself crashes)
     None,
@@ -112,12 +133,30 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
 
     #[test]
     fn test_default_directory() {
         let cli = Cli::try_parse_from(["rust-doctor"]).unwrap();
         assert_eq!(cli.directory, PathBuf::from("."));
+    }
+
+    #[test]
+    fn test_help_documents_exit_codes() {
+        // US-010: `--help` must carry the exit-code reference so CI authors can
+        // tell a quality-gate failure (3) from a crash (2) or setup error (1).
+        let help = Cli::command().render_long_help().to_string();
+        assert!(
+            help.contains("Exit codes:"),
+            "help is missing the exit-code section:\n{help}"
+        );
+        assert!(help.contains("Quality gate failed"));
+        for code in ["  0 ", "  1 ", "  2 ", "  3 "] {
+            assert!(
+                help.contains(code),
+                "help is missing exit code line `{code}`"
+            );
+        }
     }
 
     #[test]

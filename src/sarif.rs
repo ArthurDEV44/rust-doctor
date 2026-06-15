@@ -55,6 +55,18 @@ struct ReportingDescriptor<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     help_uri: Option<&'a str>,
     default_configuration: DefaultConfiguration,
+    /// Standard SARIF property bag; carries `heuristic` for syn-only rules so
+    /// GitHub Code Scanning consumers can calibrate confidence (US-013).
+    /// Omitted for type-aware clippy lints and external-tool findings, keeping
+    /// the output backward-compatible.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<RuleProperties>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuleProperties {
+    heuristic: bool,
 }
 
 #[derive(Serialize)]
@@ -134,6 +146,8 @@ fn build_rules(diagnostics: &[Diagnostic]) -> Vec<ReportingDescriptor<'_>> {
                 default_configuration: DefaultConfiguration {
                     level: severity_to_sarif_level(d.severity),
                 },
+                properties: crate::rules::is_heuristic_rule(&d.rule)
+                    .then_some(RuleProperties { heuristic: true }),
             });
         }
     }
@@ -305,6 +319,55 @@ mod tests {
         assert_eq!(severity_to_sarif_level(Severity::Error), "error");
         assert_eq!(severity_to_sarif_level(Severity::Warning), "warning");
         assert_eq!(severity_to_sarif_level(Severity::Info), "note");
+    }
+
+    #[test]
+    fn test_heuristic_rule_carries_property() {
+        let diags = vec![
+            Diagnostic {
+                file_path: PathBuf::from("src/main.rs"),
+                rule: "unwrap-in-production".to_string(),
+                category: Category::ErrorHandling,
+                severity: Severity::Warning,
+                message: "heuristic finding".to_string(),
+                help: None,
+                line: Some(1),
+                column: None,
+                fix: None,
+            },
+            Diagnostic {
+                file_path: PathBuf::from("src/main.rs"),
+                rule: "clippy::needless_return".to_string(),
+                category: Category::Style,
+                severity: Severity::Warning,
+                message: "clippy finding".to_string(),
+                help: None,
+                line: Some(2),
+                column: None,
+                fix: None,
+            },
+        ];
+        let result = make_scan_result(diags);
+        let sarif = render_sarif(&result).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&sarif).unwrap();
+        let rules = parsed["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+
+        let heuristic = rules
+            .iter()
+            .find(|r| r["id"] == "unwrap-in-production")
+            .unwrap();
+        assert_eq!(heuristic["properties"]["heuristic"], true);
+
+        let clippy = rules
+            .iter()
+            .find(|r| r["id"] == "clippy::needless_return")
+            .unwrap();
+        assert!(
+            clippy.get("properties").is_none(),
+            "clippy lints must not carry the heuristic property"
+        );
     }
 
     #[test]

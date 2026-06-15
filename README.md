@@ -160,6 +160,28 @@ rust-doctor --mcp
 rust-doctor setup
 ```
 
+## Exit Codes
+
+rust-doctor returns distinct exit codes so CI pipelines can tell a quality-gate
+failure apart from a crash:
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success — scan completed and all quality gates passed |
+| `1` | Setup error — MCP server, setup wizard, or `--install-deps` failed |
+| `2` | Scan error — project discovery/compile failure or output rendering failed |
+| `3` | Quality gate failed — score below `[score] fail_below`, or `--fail-on` threshold reached |
+
+Gate the build on a quality failure without masking a crash:
+
+```bash
+rust-doctor --fail-on error
+if [ $? -eq 3 ]; then
+  echo "Quality gate failed"
+  exit 1
+fi
+```
+
 ## AI Agent Setup (recommended)
 
 The fastest way to integrate rust-doctor with your AI coding agent:
@@ -369,33 +391,49 @@ let x = risky_call(); // rust-doctor-disable-line
 
 ## Rules
 
-### Custom AST Rules (19 rules)
+### Custom AST Rules (19 rules) — heuristic
+
+These rules analyze the syntax tree only (via `syn`): no type resolution, no
+macro expansion. They run fast and offline, but emit a **heuristic** signal, not
+a type-checked verdict — calibrate confidence accordingly. Findings are tagged
+`heuristic` in `--json` and SARIF output, and marked `~heuristic` in the
+terminal. Rules flagged ⚠ have known structural blind spots (see below).
 
 | Category | Rule | Severity |
 |----------|------|----------|
-| Error Handling | `unwrap-in-production` | Warning |
+| Error Handling | `unwrap-in-production` ⚠ | Warning |
 | Error Handling | `panic-in-library` | Error |
 | Error Handling | `box-dyn-error-in-public-api` | Warning |
 | Error Handling | `result-unit-error` | Warning |
 | Performance | `excessive-clone` | Warning |
 | Performance | `string-from-literal` | Info |
 | Performance | `collect-then-iterate` | Warning |
-| Performance | `large-enum-variant` | Warning |
+| Performance | `large-enum-variant` ⚠ | Warning |
 | Performance | `unnecessary-allocation` | Warning |
 | Architecture | `high-cyclomatic-complexity` | Warning |
 | Security | `hardcoded-secrets` | Error |
 | Security | `unsafe-block-audit` | Warning |
-| Security | `sql-injection-risk` | Error |
-| Async | `blocking-in-async` | Error |
+| Security | `sql-injection-risk` ⚠ | Error |
+| Async | `blocking-in-async` ⚠ | Error |
 | Async | `block-on-in-async` | Error |
 | Framework | `tokio-main-missing` | Error |
 | Framework | `tokio-spawn-without-move` | Error |
 | Framework | `axum-handler-not-async` | Warning |
 | Framework | `actix-blocking-handler` | Warning |
 
-### Clippy Lints (75+ with overrides)
+#### Known heuristic limitations (⚠)
 
-rust-doctor runs `cargo clippy` with pedantic, nursery, and cargo lint groups. 75+ lints have explicit category and severity overrides across: Error Handling, Performance, Security, Correctness, Architecture, Cargo, Async, Style.
+Without type information these rules have documented blind spots. They're still
+worth surfacing, but a finding is a prompt to look, not a confirmed defect:
+
+- `unwrap-in-production` — matches `.unwrap()`/`.expect()` syntactically; cannot tell a provably-infallible unwrap from a risky one.
+- `large-enum-variant` — counts a variant's fields, not its byte size; a few wide-type fields can outweigh many small ones.
+- `blocking-in-async` — flags known blocking calls by name inside async fns; cannot follow calls into other functions or resolve aliased imports.
+- `sql-injection-risk` — flags string-built queries heuristically; cannot confirm the interpolated value is actually untrusted input.
+
+### Clippy Lints (75+ with overrides) — type-aware
+
+rust-doctor runs `cargo clippy` with pedantic, nursery, and cargo lint groups. 75+ lints have explicit category and severity overrides across: Error Handling, Performance, Security, Correctness, Architecture, Cargo, Async, Style. Unlike the custom rules above, clippy resolves types against the compiler, so its findings are more authoritative — they are **not** tagged `heuristic`.
 
 ### External Tools (optional, auto-detected)
 
@@ -434,15 +472,55 @@ Full API docs are on [docs.rs/rust-doctor](https://docs.rs/rust-doctor).
 
 ## Score Calculation
 
-The score uses weighted dimension scoring across 5 dimensions (Security ×2.0, Reliability ×1.5, Maintainability ×1.0, Performance ×1.0, Dependencies ×1.0). Each dimension is scored as `100 - (unique_error_rules × 1.5) - (unique_warning_rules × 0.75) - (unique_info_rules × 0.25)`, and the overall score is the weighted average, clamped to 0–100.
+**Read the 0–100 score as a compass, not a thermometer.** It points you toward
+the weakest dimension; it isn't a precision measurement. The per-dimension
+scores (shown in the terminal box and in `--json`) carry the real signal — they
+tell you *where* to act.
 
-The score counts unique rules violated, not occurrences — fixing one instance of `.unwrap()` won't change the score, but eliminating all `.unwrap()` calls removes the penalty entirely.
+### How it's computed
+
+The score is a weighted average across 5 dimensions:
+
+| Dimension | Weight | Covers |
+|-----------|--------|--------|
+| Security | ×2.0 | Security rules (hardcoded secrets, unsafe, SQL injection) |
+| Reliability | ×1.5 | Correctness, error handling, async, framework |
+| Maintainability | ×1.0 | Architecture, style |
+| Performance | ×1.0 | Performance |
+| Dependencies | ×1.0 | Cargo, dependencies, advisory findings (RUSTSEC / cargo-deny) |
+
+Each dimension starts at 100 and loses points per **unique rule** violated,
+weighted by severity:
+
+`dimension = 100 − (unique_error_rules × 1.5) − (unique_warning_rules × 0.75) − (unique_info_rules × 0.25)`
+
+The dimension is clamped to `[0, 100]`, and the overall score is the weighted
+average of the five, also clamped to `[0, 100]`.
+
+The score counts unique rules, not occurrences — fixing one `.unwrap()` won't
+move it, but removing the last `.unwrap()` drops the penalty entirely.
 
 | Score | Label | Doctor |
 |-------|-------|--------|
 | 75–100 | Great | ◠ ◠ |
 | 50–74 | Needs work | • • |
 | 0–49 | Critical | x x |
+
+### Known limits
+
+- **Dimension saturation.** Penalties are linear and the floor is 0, so once a
+  dimension accumulates ~67 distinct Error-severity rules (`100 ÷ 1.5`), it sits
+  at 0 and further distinct rules in that dimension stop moving the number — it's
+  directional past that point, not proportional.
+- **Heuristic inputs.** The custom AST rules are `syn`-only (no types, no macro
+  expansion), so part of what feeds the score is a heuristic signal — see
+  [Rules](#rules). Clippy and external-tool findings are type-aware. The score
+  does not currently weight heuristic vs type-aware findings differently.
+- **Hand-tuned weights.** The dimension weights and severity penalties are
+  deliberate but not empirically calibrated; treat cross-project score
+  comparisons with caution.
+- **Empty projects.** A directory with no Rust source files scores 100 and emits
+  `No Rust source files found` — expected, not a clean bill of health.
 
 ## Contributing
 

@@ -7,6 +7,10 @@ use super::score::{SCORE_GOOD_THRESHOLD, SCORE_OK_THRESHOLD};
 
 const SCORE_BAR_WIDTH: usize = 40;
 
+/// Short caption framing the aggregate score as a direction, not a precise
+/// grade (US-012). The per-dimension scores below tell you *where* to act.
+const COMPASS_CAPTION: &str = "compass, not thermometer — see per-dimension scores";
+
 /// Render full scan results to stdout/stderr.
 pub fn render_terminal(result: &ScanResult, verbose: bool) {
     // Handle zero files — still show diagnostics (e.g., audit/machete findings)
@@ -213,6 +217,7 @@ fn print_score_box(result: &ScanResult) {
     let mut widths = vec![
         7_usize,
         score_text.width(),
+        COMPASS_CAPTION.width(),
         bar.plain.width(),
         dim_text.width(),
         stats.width(),
@@ -228,9 +233,13 @@ fn print_score_box(result: &ScanResult) {
 
     render_header(iw, score);
 
-    // Score + bar
+    // Score + compass caption + bar
     let colored_score = colorize_by_score(&score_text, score);
     println!("{}", pad_line(iw, &colored_score, score_text.width()));
+    println!(
+        "{}",
+        pad_line(iw, &dim(COMPASS_CAPTION), COMPASS_CAPTION.width())
+    );
     println!("{}", empty_line(iw));
     println!("{}", pad_line(iw, &bar.colored, bar.plain.width()));
     println!("{}", empty_line(iw));
@@ -360,6 +369,13 @@ fn print_diagnostics(diagnostics: &[crate::diagnostics::Diagnostic], verbose: bo
             eprint!(
                 " {}",
                 format!("({})", group.count).if_supports_color(Stream::Stderr, |t| t.dimmed())
+            );
+        }
+        // Mark syn-only heuristic findings so the user calibrates confidence (US-013).
+        if crate::rules::is_heuristic_rule(group.rule) {
+            eprint!(
+                " {}",
+                "~heuristic".if_supports_color(Stream::Stderr, |t| t.dimmed())
             );
         }
         eprintln!();

@@ -27,13 +27,38 @@ pub fn render_score(result: &ScanResult) {
 
 /// Render `--json` mode: full ScanResult as JSON to stdout.
 ///
+/// Each diagnostic from a syn-only custom rule is tagged with `"heuristic": true`
+/// (US-013) so consumers can calibrate confidence vs type-aware clippy lints.
+/// The flag is omitted for non-heuristic findings, keeping the output
+/// backward-compatible (existing consumers ignore the optional field).
+///
 /// # Errors
 ///
 /// Returns an error if serialization fails.
 pub fn render_json(result: &ScanResult) -> Result<(), serde_json::Error> {
-    let json = serde_json::to_string_pretty(result)?;
-    println!("{json}");
+    let mut value = serde_json::to_value(result)?;
+    annotate_heuristic_diagnostics(&mut value);
+    println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
+}
+
+/// Add `"heuristic": true` to each diagnostic produced by a syn-only rule.
+fn annotate_heuristic_diagnostics(value: &mut serde_json::Value) {
+    let Some(diagnostics) = value
+        .get_mut("diagnostics")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    for diag in diagnostics {
+        let is_heuristic = diag
+            .get("rule")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(crate::rules::is_heuristic_rule);
+        if is_heuristic && let Some(obj) = diag.as_object_mut() {
+            obj.insert("heuristic".to_string(), serde_json::Value::Bool(true));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -58,6 +83,75 @@ mod tests {
             column: None,
             fix: None,
         }
+    }
+
+    // --- heuristic JSON annotation (US-013) ---
+
+    #[test]
+    fn test_annotate_heuristic_diagnostics() {
+        let mut value = serde_json::json!({
+            "diagnostics": [
+                { "rule": "unwrap-in-production" },
+                { "rule": "clippy::unwrap_used" },
+            ]
+        });
+        annotate_heuristic_diagnostics(&mut value);
+        let diags = value["diagnostics"].as_array().unwrap();
+        assert_eq!(diags[0]["heuristic"], serde_json::Value::Bool(true));
+        assert!(
+            diags[1].get("heuristic").is_none(),
+            "clippy lints must not be tagged heuristic"
+        );
+    }
+
+    #[test]
+    fn test_render_json_round_trip_tags_heuristic() {
+        // Serialize a REAL ScanResult (not a hand-rolled json! literal): if the
+        // `diagnostics` field is ever renamed, `annotate_heuristic_diagnostics`
+        // would silently no-op and drop the flag — this test fails instead,
+        // guarding the JSON backward-compat contract (US-013).
+        use crate::diagnostics::DimensionScores;
+        let result = ScanResult {
+            diagnostics: vec![
+                make_diag("unwrap-in-production", Severity::Warning),
+                make_diag("clippy::unwrap_used", Severity::Warning),
+            ],
+            score: 90,
+            score_label: ScoreLabel::Great,
+            dimension_scores: DimensionScores {
+                security: 100,
+                reliability: 90,
+                maintainability: 100,
+                performance: 100,
+                dependencies: 100,
+            },
+            source_file_count: 1,
+            elapsed: std::time::Duration::from_millis(1),
+            skipped_passes: vec![],
+            error_count: 0,
+            warning_count: 2,
+            info_count: 0,
+            pass_timings: vec![],
+        };
+
+        let mut value = serde_json::to_value(&result).unwrap();
+        annotate_heuristic_diagnostics(&mut value);
+        let diags = value["diagnostics"].as_array().unwrap();
+
+        let heuristic = diags
+            .iter()
+            .find(|d| d["rule"] == "unwrap-in-production")
+            .expect("heuristic diagnostic present");
+        assert_eq!(heuristic["heuristic"], serde_json::Value::Bool(true));
+
+        let clippy = diags
+            .iter()
+            .find(|d| d["rule"] == "clippy::unwrap_used")
+            .expect("clippy diagnostic present");
+        assert!(
+            clippy.get("heuristic").is_none(),
+            "clippy lints must not be tagged heuristic"
+        );
     }
 
     // --- Score calculation tests ---
