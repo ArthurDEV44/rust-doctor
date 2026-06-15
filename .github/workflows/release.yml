@@ -5,8 +5,11 @@ on:
     tags:
       - 'v*'
 
+# Least-privilege default: jobs only read the repo. Jobs that need more elevate
+# explicitly at the job level (release → contents: write for the GitHub Release;
+# publish-npm → id-token: write for npm Trusted Publishing + provenance).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -78,6 +81,8 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload assets
     steps:
       - uses: actions/checkout@v4
 
@@ -151,13 +156,24 @@ jobs:
     name: Publish npm packages
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm Trusted Publishing (OIDC) and provenance attestation.
+      # No NPM_TOKEN: GitHub proves this workflow's identity over OIDC and npm
+      # mints a short-lived credential for each publish. Set up once per package
+      # on npmjs.com (see npm/publish.sh header for the package list).
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for Trusted Publishing
+        # OIDC Trusted Publishing requires npm >= 11.5.1; the bundled npm is older.
+        run: npm install -g npm@latest
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -169,9 +185,17 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish npm packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Verify tag matches crate version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CRATE="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"(.*)".*/\1/')"
+          if [ "$TAG" != "$CRATE" ]; then
+            echo "::error::Tag v$TAG does not match crate version $CRATE in Cargo.toml"
+            exit 1
+          fi
+          echo "Tag matches crate version: $CRATE"
+
+      - name: Publish npm packages (Trusted Publishing + provenance)
         run: bash npm/publish.sh "${{ steps.version.outputs.version }}" artifacts
 
   publish-crate:

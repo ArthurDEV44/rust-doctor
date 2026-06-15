@@ -4,6 +4,14 @@ set -euo pipefail
 # Publishes all npm packages for a given release.
 # Usage: ./npm/publish.sh <version> <artifacts-dir>
 #
+# Auth: npm Trusted Publishing (OIDC) — no NPM_TOKEN. The Release workflow runs
+# with `id-token: write`; npm mints a short-lived credential per publish and
+# attaches a provenance attestation (--provenance). Configured ONCE PER PACKAGE
+# on npmjs.com (Settings > Trusted Publisher), all pointing at repo
+# ArthurDEV44/rust-doctor, workflow release.yml:
+#   rust-doctor, @rust-doctor/darwin-x64, @rust-doctor/darwin-arm64,
+#   @rust-doctor/linux-x64, @rust-doctor/linux-arm64, @rust-doctor/win32-x64
+#
 # Expected artifacts directory layout:
 #   rust-doctor-x86_64-apple-darwin.tar.gz
 #   rust-doctor-aarch64-apple-darwin.tar.gz
@@ -62,7 +70,7 @@ for target in "${!TARGET_MAP[@]}"; do
   chmod +x "${pkg_dir}/bin/"* 2>/dev/null || true
 
   echo "Publishing @rust-doctor/${npm_dir}@${VERSION}..."
-  (cd "${pkg_dir}" && npm publish --access public)
+  (cd "${pkg_dir}" && npm publish --provenance --access public)
 done
 
 # Step 2: Publish main package
@@ -76,6 +84,6 @@ for npm_dir in "${TARGET_MAP[@]}"; do
 done
 
 echo "Publishing rust-doctor@${VERSION}..."
-(cd "${main_dir}" && npm publish --access public)
+(cd "${main_dir}" && npm publish --provenance --access public)
 
 echo "All npm packages published successfully!"
