@@ -28,6 +28,7 @@ struct PassResult {
 
 /// Result from the scan orchestrator (diagnostics + metadata, no score).
 /// Score calculation happens once in main after all workspace members are merged.
+#[derive(Default)]
 pub struct ScanPassResult {
     pub diagnostics: Vec<Diagnostic>,
     pub skipped_passes: Vec<String>,

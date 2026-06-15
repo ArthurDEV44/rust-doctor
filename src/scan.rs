@@ -5,8 +5,9 @@ use crate::{
     audit, clippy, config, coverage, deny, diff, geiger, machete, msrv, output, rules, scanner,
     semver_checks, suppression, workspace,
 };
-use rayon::prelude::*;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 /// Derive custom rule names from the rule registry at runtime.
@@ -33,6 +34,32 @@ pub fn scan_project(
     project_filter: &[String],
     suppress_spinner: bool,
 ) -> Result<ScanResult, crate::error::ScanError> {
+    // CLI path: no external cancellation, so pass a flag that is never set.
+    let cancel = Arc::new(AtomicBool::new(false));
+    scan_project_cancellable(
+        project_info,
+        resolved,
+        offline,
+        project_filter,
+        suppress_spinner,
+        &cancel,
+    )
+}
+
+/// Cancellable variant of [`scan_project`].
+///
+/// The `cancel` flag is polled between scan-root batches and propagated to the
+/// subprocess passes. When it is set (e.g. by the MCP 5-minute timeout), the scan
+/// stops launching new passes and any in-flight `cargo` subprocess tree is killed
+/// instead of being detached to run in the background (US-007 / US-008).
+pub fn scan_project_cancellable(
+    project_info: &ProjectInfo,
+    resolved: &ResolvedConfig,
+    offline: bool,
+    project_filter: &[String],
+    suppress_spinner: bool,
+    cancel: &Arc<AtomicBool>,
+) -> Result<ScanResult, crate::error::ScanError> {
     tracing::info!(project = %project_info.name, "starting scan");
 
     // Step 1: Verify ignored rules are known — warns on typos in config
@@ -45,8 +72,11 @@ pub fn scan_project(
     // Step 3: Parse git diff if --diff was specified (narrows scope to changed files)
     let diff_context = resolve_diff_context(project_info, resolved);
 
-    // Step 4: Run all analysis passes in parallel
-    // Two levels of parallelism: rayon for scan roots, std::thread::scope for passes within a root
+    // Step 4: Run all analysis passes
+    // Three levels of parallelism, all OS-thread / rayon layered so rayon workers
+    // never block on a join: bounded OS threads over scan roots, std::thread::scope
+    // over passes within a root, rayon par_iter over files in the rule engine.
+    // See the invariant comment in `run_passes` for why root-level rayon is banned.
     let mut passes_output = run_passes(
         project_info,
         resolved,
@@ -54,6 +84,7 @@ pub fn scan_project(
         diff_context.as_ref(),
         offline,
         suppress_spinner,
+        cancel,
     );
 
     // Step 5: Deduplicate — same rule+file+line from overlapping workspace scans = one diagnostic
@@ -259,6 +290,7 @@ fn run_passes(
     diff_context: Option<&diff::DiffContext>,
     offline: bool,
     suppress_spinner: bool,
+    cancel: &Arc<AtomicBool>,
 ) -> PassesOutput {
     let is_diff_mode = diff_context.is_some();
     let mut all_diagnostics = Vec::new();
@@ -272,27 +304,82 @@ fn run_passes(
         total_source_files = ctx.changed_files.len();
     }
 
-    let results: Vec<_> = scan_roots
-        .par_iter()
-        .map(|scan_root| {
-            let source_files = if diff_context.is_none() {
-                scanner::count_source_files(scan_root)
-            } else {
-                0
-            };
-            let passes = build_passes(project_info, resolved, is_diff_mode, offline);
-            let orchestrator = scanner::ScanOrchestrator::new(passes);
-            let pass_result = orchestrator.run(scan_root, resolved, suppress_spinner);
-            (source_files, pass_result)
-        })
-        .collect();
+    // INVARIANT: parallelize scan roots with OS threads (`std::thread::scope`),
+    // bounded to `available_parallelism` per batch — NEVER with rayon
+    // (`par_iter`/`rayon::scope`). Each root runs its passes via an inner
+    // `std::thread::scope` (`ScanOrchestrator::run_passes_parallel`), and the rule
+    // engine fans out file work with an inner rayon `par_iter` (`rules/mod.rs`).
+    // A rayon iterator at THIS level would park a rayon worker on the inner
+    // `thread::scope.join()` whose rule engine awaits inner rayon work on the same
+    // global pool; with workspace members ≥ cores and a cold cache, every worker
+    // parks on `join` and the inner `par_iter` starves → permanent hang (EP-001).
+    // OS threads sidestep this: rayon pool workers are never the threads that block
+    // on a join, so the pool always makes progress regardless of the member/core
+    // ratio. Root-level parallelism is KEPT (it overlaps each root's blocking
+    // `cargo clippy` wait — sequential roots measured ~20% slower on a cold
+    // multi-member workspace) but bounded, so a huge workspace cannot spawn
+    // unbounded threads or `cargo` subprocesses.
+    // DO NOT reintroduce rayon above a `thread::scope` that itself contains rayon.
+    let max_parallel = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    for batch in scan_roots.chunks(max_parallel) {
+        // US-007: cooperative cancellation, polled BETWEEN batches (never mid-pass).
+        // When the MCP timeout sets the flag, stop launching new root batches.
+        if cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let batch_results = std::thread::scope(|s| {
+            #[expect(
+                clippy::needless_collect,
+                reason = "all roots must be spawned before any is joined, else they run serially"
+            )]
+            let handles: Vec<_> = batch
+                .iter()
+                .map(|scan_root| {
+                    s.spawn(move || {
+                        // Skip roots whose work hasn't started once cancellation fires.
+                        if cancel.load(Ordering::Relaxed) {
+                            return (0, scanner::ScanPassResult::default());
+                        }
+                        let source_files = if diff_context.is_none() {
+                            scanner::count_source_files(scan_root)
+                        } else {
+                            0
+                        };
+                        let passes = build_passes(project_info, resolved, is_diff_mode, offline);
+                        let orchestrator = scanner::ScanOrchestrator::new(passes);
+                        let pass_result = orchestrator.run(scan_root, resolved, suppress_spinner);
+                        (source_files, pass_result)
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|h| {
+                    h.join().unwrap_or_else(|_| {
+                        // Pass panics are already caught inside the orchestrator
+                        // (PassError::Panicked), so a join failure here is a rare
+                        // root-level panic. Keep the other roots' results instead of
+                        // aborting the whole scan (US-001 AC5).
+                        eprintln!(
+                            "Warning: a scan root worker panicked; its diagnostics are omitted"
+                        );
+                        (0, scanner::ScanPassResult::default())
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
 
-    for (source_files, pass_result) in results {
-        total_source_files += source_files;
-        all_diagnostics.extend(pass_result.diagnostics);
-        all_skipped_passes.extend(pass_result.skipped_passes);
-        total_elapsed = total_elapsed.max(pass_result.elapsed); // max, not sum, since parallel
-        all_pass_timings.extend(pass_result.pass_timings);
+        // Roots within a batch run in parallel (wall-clock ≈ max); batches run
+        // sequentially (wall-clock ≈ sum of per-batch maxima).
+        let mut batch_elapsed = Duration::ZERO;
+        for (source_files, pass_result) in batch_results {
+            total_source_files += source_files;
+            all_diagnostics.extend(pass_result.diagnostics);
+            all_skipped_passes.extend(pass_result.skipped_passes);
+            batch_elapsed = batch_elapsed.max(pass_result.elapsed);
+            all_pass_timings.extend(pass_result.pass_timings);
+        }
+        total_elapsed += batch_elapsed;
     }
 
     PassesOutput {
