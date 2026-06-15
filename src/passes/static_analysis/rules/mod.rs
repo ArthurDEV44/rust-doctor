@@ -31,6 +31,15 @@ pub fn has_cfg_test(attrs: &[syn::Attribute]) -> bool {
     })
 }
 
+/// True if `attrs` put the item in test-only context — either `#[test]` or a
+/// bare `#[cfg(test)]` on the function itself. Shared by every `in_test` toggle
+/// (`UnwrapVisitor`, `PanicVisitor`, `SecretVisitor`) so they detect test code
+/// identically — `#[cfg(test)]` modules are skipped separately via
+/// [`has_cfg_test`] at the module level.
+pub fn is_test_context(attrs: &[syn::Attribute]) -> bool {
+    has_test_attr(attrs) || has_cfg_test(attrs)
+}
+
 /// Trait for custom AST-based rules that clippy doesn't cover.
 ///
 /// Rules must be `Send + Sync` for parallel file processing.
@@ -261,6 +270,22 @@ pub fn all_custom_rules() -> Vec<Box<dyn CustomRule>> {
         .collect()
 }
 
+/// Names of every syn-based custom rule — the "heuristic" set, computed once.
+static HEURISTIC_RULE_NAMES: std::sync::LazyLock<std::collections::HashSet<&'static str>> =
+    std::sync::LazyLock::new(|| all_custom_rules().iter().map(|r| r.name()).collect());
+
+/// Returns `true` if `rule` is a syn-only custom rule — a heuristic with no
+/// type information or macro expansion — as opposed to a type-aware clippy lint
+/// or an external-tool finding (cargo-audit, cargo-deny, …).
+///
+/// Used to mark diagnostics so users can calibrate their confidence: a clippy
+/// lint resolved against the `TyCtxt` is more authoritative than a name-based
+/// AST heuristic (US-013).
+#[must_use]
+pub fn is_heuristic_rule(rule: &str) -> bool {
+    HEURISTIC_RULE_NAMES.contains(rule)
+}
+
 /// Check if the tail of `actual` matches `pattern` exactly.
 /// Used by async and framework rules to match blocking-call path segments.
 #[inline]
@@ -440,6 +465,23 @@ mod tests {
         let dir = make_temp_project(&[("main.rs", "fn main() {}")]);
         let diags = engine.scan_with_config(dir.path(), &[], &[], &[]);
         assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn test_is_heuristic_rule() {
+        // Every syn-based custom rule is heuristic.
+        for rule in all_custom_rules() {
+            assert!(
+                is_heuristic_rule(rule.name()),
+                "{} should be heuristic",
+                rule.name()
+            );
+        }
+        // Clippy lints and external-tool findings are not.
+        assert!(!is_heuristic_rule("clippy::unwrap_used"));
+        assert!(!is_heuristic_rule("unused-dependency"));
+        assert!(!is_heuristic_rule("RUSTSEC-2021-0001"));
+        assert!(!is_heuristic_rule("nonexistent-rule"));
     }
 
     #[test]
